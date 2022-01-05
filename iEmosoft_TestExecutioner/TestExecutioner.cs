@@ -310,12 +310,9 @@ namespace aUI.Automation
             return RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().Alert();
         }
 
-        public void NavigateTo(string url, string expectedResult = "")
+        public void NavigateTo(string url)
         {
-            if (!string.IsNullOrEmpty(expectedResult) && ReportingEnabled)
-            {
-                BeginTestCaseStep("Navigate to " + url, expectedResult);
-            }
+            TestAuthor.BeginTestCaseStep("Navigate to " + url);
 
             UiDriver.MaximizeWindow();
             UiDriver.NavigateTo(url);
@@ -383,23 +380,7 @@ namespace aUI.Automation
             }
         }
 
-        public Exception FailCurrentStep(Exception unexpectedException)
-        {
-            if (CurrentStep == null)
-            {
-                FailTest(unexpectedException);
-            }
-            else
-            {
-                string msg = "An Unexpected error occurred. " + unexpectedException.ToDeepMessage();
-                FailCurrentStep(null, msg, true);
-                Assert.True(false, msg);
-            }
-
-            return unexpectedException;
-
-        }
-        public void FailCurrentStep(string expectedResult, string actualResult, bool isShowStoppingError = false)
+        public void FailCurrentStep(string expectedResult, string actualResult)
         {
             TestPassed = false;
             var currentStep = CurrentStep;
@@ -419,19 +400,13 @@ namespace aUI.Automation
 
                 CaptureScreen(actualResult);
             }
-
-            if (isShowStoppingError)
-            {
-                Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
-                Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
-            }
         }
 
-        public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string suppliedData = "", bool captureImage = false)
+        public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string actualResult = "", bool captureImage = false)
         {
             if (TestAuthor != null)
             {
-                TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, suppliedData);
+                TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, actualResult);
             }
 
             if (captureImage || Config.RecordAllSteps) //add second parameter
@@ -517,24 +492,6 @@ namespace aUI.Automation
             catch
             {
                 return null;
-            }
-        }
-
-        public static bool FailTestBeforeItEvenRan(TestCaseHeaderData testCaseHeader, string reason)
-        {
-            try
-            {
-                using (var e = new TestExecutioner(testCaseHeader))
-                {
-                    e.BeginTestCaseStep("Unable to launch test, test failed before it began");
-                    e.FailCurrentStep("", reason, true);
-                }
-
-                return true;
-            }
-            catch
-            {
-                return false;
             }
         }
 
@@ -803,7 +760,7 @@ namespace aUI.Automation
 
         public void NavBack()
         {
-            BeginTestCaseStep("Navigate back to the prior page");
+            TestAuthor.BeginTestCaseStep("Navigate back to the prior page");
             RawSeleniumWebDriver_AvoidCallingDirectly.Navigate().Back();
         }
 

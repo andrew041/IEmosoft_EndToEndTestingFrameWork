@@ -25,11 +25,10 @@ namespace aUI.Automation.UIDrivers
             IERemote,
             Edge,
             EdgeRemote,
-            Android,
-            AndroidRemote,
-            SauceLabs,
             Windows,
+            Android,
             IOS,
+            SauceLabs,
         }
 
         private IWebDriver Browser = null;

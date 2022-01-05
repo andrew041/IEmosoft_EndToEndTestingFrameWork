@@ -24,38 +24,13 @@ namespace aUI.Automation.HelperObjects
                 throw;
             }
         }
+
         public void AreNotEqual(object expected, object actual, string step)
         {
             TE.BeginTestCaseStep($"Assert: {step}");
             try
             {
                 Assert.AreNotEqual(expected, actual, step);
-            }
-            catch (AssertionException)
-            {
-                TE.FailCurrentStep(expected.ToString(), actual.ToString());
-                throw;
-            }
-        }
-        public void AreNotSame(object expected, object actual, string step)
-        {
-            TE.BeginTestCaseStep($"Assert: {step}");
-            try
-            {
-                Assert.AreNotSame(expected, actual, step);
-            }
-            catch (AssertionException)
-            {
-                TE.FailCurrentStep(expected.ToString(), actual.ToString());
-                throw;
-            }
-        }
-        public void AreSame(object expected, object actual, string step)
-        {
-            TE.BeginTestCaseStep($"Assert: {step}");
-            try
-            {
-                Assert.AreSame(expected, actual, step);
             }
             catch (AssertionException)
             {
@@ -82,8 +57,6 @@ namespace aUI.Automation.HelperObjects
         {
               True(condition, step);
         }
-
-
 
         public void Fail(string step)
         {
