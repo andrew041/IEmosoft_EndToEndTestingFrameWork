@@ -68,7 +68,13 @@ namespace aUI.Automation
             {
                 //TODO Modify Dispose to deal with null test author
                 //TODO deal with null driver on screenshot failures
-                TestAuthor = new AutomationFactory().CreateAuthor();
+                var factory = new AutomationFactory();
+                if (Directory.Exists(factory.Configuration.TestReportFilePath))
+                {
+                    Directory.Delete(factory.Configuration.TestReportFilePath, true);
+                }
+
+                TestAuthor = factory.CreateAuthor();
                 TestAuthor.StartNewTestCase(testCaseHeader);
 
                 StartTime = DateTime.Now;
@@ -429,6 +435,7 @@ namespace aUI.Automation
 
         public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string suppliedData = "", bool captureImage = false)
         {
+            stepDescription = stepDescription.Replace(Environment.NewLine, "").Replace("\"","");
             if (TestAuthor != null)
             {
                 TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, suppliedData);
@@ -669,24 +676,6 @@ namespace aUI.Automation
                 TestPassed = false;
                 throw new Exception(msg);
             }
-        }
-
-        public void SwitchFrames(Enum elEnum)
-        {
-            var el = new ElementObject(elEnum);
-
-            SwitchFrames(Action.ElementFinder(el));
-        }
-
-        public void SwitchFrames(By by)
-        {
-            IWebElement frame = RawSeleniumWebDriver_AvoidCallingDirectly.FindElement(by);
-            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().Frame(frame);
-        }
-
-        public void SwitchToMainFrame()
-        {
-            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().DefaultContent();
         }
 
         public void SwitchWindows(bool first = true)
@@ -1141,8 +1130,8 @@ namespace aUI.Automation
             var table = WaitFor(tableRef);
             var headers = table.GetTexts(new ElementObject(ElementType.Tag, "th"));
 
-            var body = table.GetText(new ElementObject(ElementType.Tag, "tbody") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
-            var rows = body.GetTexts(new ElementObject(ElementType.Tag, "tr") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
+            var body = table.WaitFor(new ElementObject(ElementType.Tag, "tbody") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
+            var rows = body.WaitForAll(new ElementObject(ElementType.Tag, "tr") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
             var tableBody = new List<List<ElementResult>>();
 
             foreach (var row in rows)

@@ -115,7 +115,9 @@ namespace aUI.Automation.BaseClasses
                 result = result.Replace(fileName, "Failed - " + fileName);
             }
 
-            result = result.Replace("\"", "").Replace("*", "").Replace("|", "-");
+            result = result.Replace("|", "-");
+            var invalidChars = new List<string>() { "\"", "*", "<",">","?" };//"/", ,":","\\"
+            invalidChars.ForEach(x => result = result.Replace(x, ""));
 
             return result;
         }
