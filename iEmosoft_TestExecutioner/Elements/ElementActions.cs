@@ -104,7 +104,7 @@ namespace aUI.Automation.Elements
                     case ElementAction.RadioBtn:
                     case ElementAction.MultiDropdown:
                     case ElementAction.Hover:
-                        TE.BeginTestCaseStep($"Execute action {ele.Action} on element: {eleName.Replace("_", " ")}",
+                        TE.BeginTestCaseStep($"Execute action {ele.Action} on element: {eleName}",
                             ele.Random || ele.ProtectedValue ? "Random Value" : ele.Text);
                         break;
                 }
@@ -147,7 +147,7 @@ namespace aUI.Automation.Elements
                     case ElementAction.RadioBtn:
                     case ElementAction.MultiDropdown:
                     case ElementAction.Hover:
-                        TE.BeginTestCaseStep($"Execute action {ele.Action} on elements: {eleName.Replace("_", " ")}",
+                        TE.BeginTestCaseStep($"Execute action {ele.Action} on elements: {eleName}",
                             ele.Random || ele.ProtectedValue ? "Random Value" : ele.Text);
                         break;
                 }
@@ -844,9 +844,12 @@ namespace aUI.Automation.Elements
             return elementRef.ExecuteAction(element);
         }
 
-        public static ElementResult GetCheckbox(this ElementResult elementRef)
+        public static ElementResult GetCheckbox(this ElementResult elementRef, ElementObject ele = null)
         {
-            var ele = new ElementObject { Action = ElementAction.GetCheckbox };
+            if (ele == null)
+            {
+                ele = new ElementObject { Action = ElementAction.GetCheckbox };
+            }
             return elementRef.ExecuteAction(ele);
         }
 
@@ -873,6 +876,22 @@ namespace aUI.Automation.Elements
         {
             var ele = new ElementObject { Action = ElementAction.GetProperty };
             return elementRef.ExecuteAction(ele);
+        }
+
+        public static ElementResult WaitFor(this ElementResult elementRef, ElementObject ele = null)
+        {
+            if (ele == null) { ele = new ElementObject(); }
+            ele.Action = ElementAction.Wait;
+            return elementRef.ExecuteAction(ele);
+        }
+
+        public static ElementResult WaitFor(this ElementResult elementRef, Enum ele)
+        {
+            var element = new ElementObject(ele)
+            {
+                Action = ElementAction.Wait
+            };
+            return elementRef.ExecuteAction(element);
         }
         #endregion
 
@@ -985,6 +1004,19 @@ namespace aUI.Automation.Elements
         public static List<ElementResult> GetProperties(this ElementResult elementRef)
         {
             var ele = new ElementObject { Action = ElementAction.GetProperty };
+            return elementRef.ExecuteActions(ele);
+        }
+
+        public static List<ElementResult> WaitForAll(this ElementResult elementRef, string text)
+        {
+            var ele = new ElementObject { Action = ElementAction.Wait, Text = text };
+            return elementRef.ExecuteActions(ele);
+        }
+
+        public static List<ElementResult> WaitForAll(this ElementResult elementRef, ElementObject ele = null)
+        {
+            if (ele == null) { ele = new ElementObject(); }
+            ele.Action = ElementAction.Wait;
             return elementRef.ExecuteActions(ele);
         }
         #endregion

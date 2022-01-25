@@ -165,8 +165,9 @@ namespace aUI.Automation.HelperObjects
                 //                var result = System.Configuration.ConfigurationManager.AppSettings[settingName];
                 //                return result.ToString();
             }
-            catch
+            catch (Exception e)
             {
+                Console.WriteLine("Get Config Setting Error: " + e.Message);
                 return resultIfNotFound;
                 //throw new Exception(string.Format("Unable to find '{0}' in the config file, this is required", settingName));
             }

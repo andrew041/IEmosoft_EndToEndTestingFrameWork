@@ -14,6 +14,7 @@ namespace aUI.Automation.HelperObjects
         HttpClient Client;
         TestExecutioner TE;
         string ApplicationType = "application/json";
+        string RootEndpt = "";
 
         public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json")
         {
@@ -44,11 +45,23 @@ namespace aUI.Automation.HelperObjects
                 new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(type));
         }
 
+        public void SetRootEndpt(string root)
+        {
+            if (root.StartsWith('/'))
+            {
+                RootEndpt = root;
+            } else
+            {
+                RootEndpt = $"/{root}";
+            }
+        }
+
         //get
         public dynamic GetCall(Enum endpt, string query = "", int expectedCode = 200)
         {
             StartStep(endpt, "Get", expectedCode);
-            var ept = $"{endpt.Api()}{query}";
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
+            //Console.WriteLine("GET: "+ept);
             var rspMsg = Client.GetAsync(ept).Result;
             var a = rspMsg.Content.ReadAsStringAsync();
             AssertResult(expectedCode, rspMsg);
@@ -61,7 +74,7 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Post", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PostAsync(endpt.Api() + vars, data).Result;
+            var rspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
             var a = rspMsg.Content.ReadAsStringAsync().Result;
             AssertResult(expectedCode, rspMsg);
 
@@ -73,7 +86,7 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Put", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PutAsync(endpt.Api() + vars, data).Result;
+            var rspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
             var a = rspMsg.Content.ReadAsStringAsync();
             AssertResult(expectedCode, rspMsg);
 
@@ -84,9 +97,21 @@ namespace aUI.Automation.HelperObjects
         public dynamic DeleteCall(Enum endpt, string query = "", int expectedCode = 200)
         {
             StartStep(endpt, "Delete", expectedCode);
-            var ept = $"{endpt.Api()}{query}";
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
             var rspMsg = Client.DeleteAsync(ept).Result;
 
+            AssertResult(expectedCode, rspMsg);
+
+            return rspMsg.GetRsp();
+        }
+
+        //patch
+        public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200)
+        {
+            StartStep(endpt, "Patch", expectedCode);
+            var data = FormatBody(body);
+            var rspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = rspMsg.Content.ReadAsStringAsync();
             AssertResult(expectedCode, rspMsg);
 
             return rspMsg.GetRsp();
