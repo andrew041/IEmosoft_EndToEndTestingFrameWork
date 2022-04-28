@@ -30,7 +30,7 @@ namespace aUI.Automation.Authors
 
         int MinuteThreshold = 45;
         int ApiWaitTime = 0;
-        private int EditTestThreshold = 25;
+        private int EditTestThreshold = 150;
         string Project = Config.GetConfigSetting("XRayProject");
         string TestFolder = Config.GetConfigSetting("XRayTestFolder");
         string RetiredFolder = Config.GetConfigSetting("XRayRetiredFolder");
@@ -483,11 +483,21 @@ namespace aUI.Automation.Authors
             var start = te.StartTime.ToString("yyyy-MM-dd'T'HH:mm:ssK");
             var end = te.DisposeTime == null ? DateTime.Now : (DateTime)te.DisposeTime;
             var finish = end.ToString("yyyy-MM-dd'T'HH:mm:ssK");
+            var status = te.TestCaseFailed ? "FAILED" : "PASSED";
 
-            var comment = $"Total Runtime: {end.Subtract(te.StartTime).ToString().Split('.')[0]} (hh:mm:ss)";
+            var comment = $"*Total Runtime:* {end.Subtract(te.StartTime).ToString().Split('.')[0]} (hh:mm:ss)";
             if (te.TestCaseFailed)
             {
-                comment += Environment.NewLine + "Step Failures:";
+                if(te.TestAuthor.ReportedBugs.Count > 0)
+                {
+                    var bugBase = Config.GetConfigSetting("BugLinkBase", "");
+                    var list = new List<string>();
+                    te.TestAuthor.ReportedBugs.ForEach(r => list.Add($"[{r}|{bugBase}{r}]"));
+                    status = "BUGGED";
+                    comment += Environment.NewLine + "*Likely failing due to bug(s):* " + string.Join(", ", list);
+                }
+
+                comment += Environment.NewLine + "*Step Failures:*";
                 var index = 0;
                 foreach (var step in te.RecordedSteps)
                 {
@@ -497,6 +507,8 @@ namespace aUI.Automation.Authors
                         comment += Environment.NewLine + $"Step {index}: {step.StepDescription.Replace("\\", "-")}   Expected: {step.ExpectedResult}   Actual: {step.ActualResult}";
                     }
                 }
+
+                comment += Environment.NewLine + "*StackTrace:*" + Environment.NewLine + te.TestStackTrace;
             }
 
             var info = new
@@ -512,7 +524,7 @@ namespace aUI.Automation.Authors
                 start,
                 finish,
                 comment,
-                status = te.TestCaseFailed ? "FAILED" : "PASSED",
+                status,
                 steps = GenerateTestSteps(te.RecordedSteps, out _, te.TestCaseFailed)
             };
 

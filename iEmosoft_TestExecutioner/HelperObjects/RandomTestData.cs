@@ -119,7 +119,7 @@ namespace aUI.Automation.HelperObjects
 
         public bool GetRandomBoolean()
         {
-            return Rnd.Next(0, 1) == 1;
+            return Rnd.Next(0, 2) == 1;
         }
 
         public string GetRandomEmailAddress(string firstName, string lastName)
