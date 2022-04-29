@@ -1,4 +1,5 @@
-﻿using aUI.Automation.ModelObjects;
+﻿using aUI.Automation.HelperObjects;
+using aUI.Automation.ModelObjects;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,9 +10,10 @@ namespace aUI.Automation.BaseClasses
     {
         private int NextStepNumber = 0;
 
-        public List<TestCaseStep> RecordedSteps { get; private set; } = new List<TestCaseStep>();
+        public List<TestCaseStep> RecordedSteps { get; private set; } = new();
         public TestCaseHeaderData TestCaseHeader { get; private set; }
 
+        public List<string> ReportedBugs { get; private set; } = new(); 
         protected string TestCaseTemplatePath;
         protected string NewTestCasePath = "";
         protected string NewTestCaseName = "";
@@ -44,6 +46,31 @@ namespace aUI.Automation.BaseClasses
         //** ABSTRACT METHODS **
         public abstract string SaveReport();
         public abstract bool StartNewTestCase(TestCaseHeaderData headerData);
+
+        public void AssociateBug(string bugNum)
+        {
+            //add project key if not included
+            var split = bugNum.Split('-');
+            if(split.Length == 1)
+            {
+                if (!string.IsNullOrEmpty(Config.GetConfigSetting("XRayProject")))
+                {
+                    bugNum = $"{Config.GetConfigSetting("XRayProject")}-{bugNum}";
+                }
+            }
+
+            ReportedBugs.Add(bugNum);
+        }
+
+        public void DisassociateBug(string bugNum)
+        {
+            var index = ReportedBugs.FindIndex(x => x.Contains(bugNum));
+            
+            if (index != -1)
+            {
+                ReportedBugs.RemoveAt(index);
+            }
+        }
 
         public bool AddTestStep(string stepDescription, string expectedResult = "", string suppliedData = "", bool wasSuccessful = true, string actualResult = "", string imageFile = "")
         {

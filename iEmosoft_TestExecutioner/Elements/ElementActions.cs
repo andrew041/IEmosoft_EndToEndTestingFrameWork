@@ -173,7 +173,7 @@ namespace aUI.Automation.Elements
             var ele = eleRes.RawEle;
             var rsp = new ElementResult(TE) { Success = false, RawEle = ele, ElementName = eleObj.ElementName };
 
-            if (ele == null)
+            if (ele == null && !(eleObj.Action == ElementAction.Wait && eleObj.WaitType == Wait.Invisible))
             {
                 return rsp;
             }

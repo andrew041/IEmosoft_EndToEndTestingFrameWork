@@ -11,10 +11,11 @@ namespace aUI.Automation.HelperObjects
     public class Api : IDisposable
     {
         //constructor would create the primary object and any needed default headers + auth tokens
-        HttpClient Client;
+        public HttpClient Client { get; }
         TestExecutioner TE;
         string ApplicationType = "application/json";
         string RootEndpt = "";
+        public HttpResponseMessage RspMsg;
 
         public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json")
         {
@@ -36,13 +37,22 @@ namespace aUI.Automation.HelperObjects
             Client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(type, authKey);
         }
 
-        public void UpdateRequestType(string type)
+        public void AddHeader(string name, string value)
         {
+            Client.DefaultRequestHeaders.Add(name, value);
+        }
+
+        public void UpdateRequestType(string appType, string acceptType = "")
+        {
+            if (string.IsNullOrEmpty(acceptType))
+            {
+                acceptType = appType;
+            }
             //TOOD may need to remove other first
             //Client.DefaultRequestHeaders.Accept
-            ApplicationType = type;
+            ApplicationType = appType;
             Client.DefaultRequestHeaders.Accept.Add(
-                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(type));
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(acceptType));
         }
 
         public void SetRootEndpt(string root)
@@ -62,11 +72,12 @@ namespace aUI.Automation.HelperObjects
             StartStep(endpt, "Get", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
             //Console.WriteLine("GET: "+ept);
-            var rspMsg = Client.GetAsync(ept).Result;
-            var a = rspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.GetAsync(ept).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            //Console.WriteLine("rsp: " + a.Result);
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //post
@@ -74,11 +85,11 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Post", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = rspMsg.Content.ReadAsStringAsync().Result;
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync().Result;
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //put
@@ -86,11 +97,11 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Put", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = rspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //delete
@@ -98,11 +109,11 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Delete", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
-            var rspMsg = Client.DeleteAsync(ept).Result;
+            RspMsg = Client.DeleteAsync(ept).Result;
 
-            AssertResult(expectedCode, rspMsg);
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //patch
@@ -110,11 +121,11 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Patch", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = rspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         private HttpContent FormatBody(object body)
@@ -122,6 +133,7 @@ namespace aUI.Automation.HelperObjects
             return ApplicationType switch
             {
                 "application/x-www-form-urlencoded" => new FormUrlEncodedContent((IEnumerable<KeyValuePair<string, string>>)body),
+                "application/xml" => new StringContent(body.ToString(), Encoding.UTF8, ApplicationType),
                 _ => new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, ApplicationType),
             };
         }
