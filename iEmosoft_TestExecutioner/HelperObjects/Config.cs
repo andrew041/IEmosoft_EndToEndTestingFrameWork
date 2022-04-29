@@ -178,7 +178,6 @@ namespace aUI.Automation.HelperObjects
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("Get Config Setting Error: " + e.Message);
                     return resultIfNotFound;
                     //throw new Exception(string.Format("Unable to find '{0}' in the config file, this is required", settingName));
                 }

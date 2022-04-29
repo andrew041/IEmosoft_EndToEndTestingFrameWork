@@ -436,7 +436,6 @@ namespace aUI.Automation
             if (isShowStoppingError)
             {
                 Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
-                Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
             }
         }
 
