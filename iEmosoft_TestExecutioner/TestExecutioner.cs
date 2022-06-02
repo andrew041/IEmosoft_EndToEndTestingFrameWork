@@ -808,7 +808,7 @@ namespace aUI.Automation
 
         public void NavBack()
         {
-            TestAuthor.BeginTestCaseStep("Navigate back to the prior page");
+            BeginTestCaseStep("Navigate back to the prior page");
             RawSeleniumWebDriver_AvoidCallingDirectly.Navigate().Back();
         }
 

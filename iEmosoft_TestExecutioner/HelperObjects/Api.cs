@@ -116,6 +116,23 @@ namespace aUI.Automation.HelperObjects
             return RspMsg.GetRsp();
         }
 
+        public dynamic DeleteCall(Enum endpt, object body, string query = "", int expectedCode = 200)
+        {
+            StartStep(endpt, "Delete", expectedCode);
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
+
+            var request = new HttpRequestMessage(HttpMethod.Delete, ept)
+            {
+                Content = FormatBody(body)
+            };
+
+            RspMsg = Client.SendAsync(request).Result;
+
+            AssertResult(expectedCode, RspMsg);
+
+            return RspMsg.GetRsp();
+        }
+
         //patch
         public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200)
         {
