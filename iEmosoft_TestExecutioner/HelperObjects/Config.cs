@@ -33,6 +33,8 @@ namespace aUI.Automation.HelperObjects
 
     public class Config : IAutomationConfiguration
     {
+        private static object _locker = new object();
+        private static IConfigurationRoot _config;
         public string TestExecutionerAuthorTypeName => GetConfigSetting("TestExecutionerAuthor", "HTML").ToUpper();
 
         public string ScreenCaptureLocalPath => Path.Combine(TestReportFilePath, "ScreenCapture");
@@ -101,6 +103,11 @@ namespace aUI.Automation.HelperObjects
                 {
                     leadingName = prams[1].Split(')')[0].Replace("\"","") + " - ";
                 }
+
+                if (TestContext.CurrentContext.Test.FullName.Contains(".API."))
+                {
+                    leadingName = $"API {leadingName}";
+                }
                 return RemoveInvalidChars($"{leadingName}{TestContext.CurrentContext.Test.Name}".Replace("_", " "));
             }
         }
@@ -136,39 +143,44 @@ namespace aUI.Automation.HelperObjects
 
         public static string GetConfigSetting(string settingName, string resultIfNotFound = null)
         {
-            var primary = Environment.GetEnvironmentVariable(settingName);
-
-            if (!string.IsNullOrEmpty(primary))
+            lock (_locker)
             {
-                return primary;
-            }
+                var primary = Environment.GetEnvironmentVariable(settingName);
 
-            try
-            {
-                var path = Directory.GetCurrentDirectory();
-                var env = Directory.GetParent(path).Name;
-
-                path = Directory.GetParent(path).Parent.Parent.FullName;
-
-                var config = new ConfigurationBuilder().SetBasePath(path)
-                    .AddJsonFile("appsettings.json", false, true)
-                    .AddJsonFile($"appsettings.{env}.json", true, true)
-                    .Build();
-
-                if(config.GetSection($"appSettings:{settingName}").Value == null)
+                if (!string.IsNullOrEmpty(primary))
                 {
-                    return resultIfNotFound;
+                    return primary;
                 }
 
-                return config.GetSection($"appSettings:{settingName}").Value;
+                try
+                {
+                    if (_config == null)
+                    {
+                        var path = Directory.GetCurrentDirectory();
+                        var env = Directory.GetParent(path).Name;
 
-                //                var result = System.Configuration.ConfigurationManager.AppSettings[settingName];
-                //                return result.ToString();
-            }
-            catch
-            {
-                return resultIfNotFound;
-                //throw new Exception(string.Format("Unable to find '{0}' in the config file, this is required", settingName));
+                        path = Directory.GetParent(path).Parent.Parent.FullName;
+
+                        _config = new ConfigurationBuilder().SetBasePath(path)
+                            .AddJsonFile("appsettings.json", false, true)
+                            .AddJsonFile($"appsettings.{env}.json", true, true)
+                            .Build();
+                    }
+                    if (_config.GetSection($"appSettings:{settingName}").Value == null)
+                    {
+                        return resultIfNotFound;
+                    }
+
+                    return _config.GetSection($"appSettings:{settingName}").Value;
+
+                    //                var result = System.Configuration.ConfigurationManager.AppSettings[settingName];
+                    //                return result.ToString();
+                }
+                catch (Exception e)
+                {
+                    return resultIfNotFound;
+                    //throw new Exception(string.Format("Unable to find '{0}' in the config file, this is required", settingName));
+                }
             }
         }
     }

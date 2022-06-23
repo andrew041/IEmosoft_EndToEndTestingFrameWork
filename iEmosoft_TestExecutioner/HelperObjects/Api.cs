@@ -11,9 +11,11 @@ namespace aUI.Automation.HelperObjects
     public class Api : IDisposable
     {
         //constructor would create the primary object and any needed default headers + auth tokens
-        HttpClient Client;
+        public HttpClient Client { get; }
         TestExecutioner TE;
         string ApplicationType = "application/json";
+        string RootEndpt = "";
+        public HttpResponseMessage RspMsg;
 
         public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json")
         {
@@ -46,25 +48,47 @@ namespace aUI.Automation.HelperObjects
             Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(type, authKey);
         }
 
-        public void UpdateRequestType(string type)
+        public void AddHeader(string name, string value)
         {
+            Client.DefaultRequestHeaders.Add(name, value);
+        }
+
+        public void UpdateRequestType(string appType, string acceptType = "")
+        {
+            if (string.IsNullOrEmpty(acceptType))
+            {
+                acceptType = appType;
+            }
             //TOOD may need to remove other first
             //Client.DefaultRequestHeaders.Accept
-            ApplicationType = type;
+            ApplicationType = appType;
             Client.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue(type));
+                new MediaTypeWithQualityHeaderValue(appType));
+        }
+
+        public void SetRootEndpt(string root)
+        {
+            if (root.StartsWith('/'))
+            {
+                RootEndpt = root;
+            } else
+            {
+                RootEndpt = $"/{root}";
+            }
         }
 
         //get
         public dynamic GetCall(Enum endpt, string query = "", int expectedCode = 200)
         {
             StartStep(endpt, "Get", expectedCode);
-            var ept = $"{endpt.Api()}{query}";
-            var rspMsg = Client.GetAsync(ept).Result;
-            var a = rspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, rspMsg);
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
+            //Console.WriteLine("GET: "+ept);
+            RspMsg = Client.GetAsync(ept).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            //Console.WriteLine("rsp: " + a.Result);
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //post
@@ -72,11 +96,11 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Post", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PostAsync(endpt.Api() + vars, data).Result;
-            var a = rspMsg.Content.ReadAsStringAsync().Result;
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync().Result;
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //put
@@ -84,23 +108,52 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Put", expectedCode);
             var data = FormatBody(body);
-            var rspMsg = Client.PutAsync(endpt.Api() + vars, data).Result;
-            var a = rspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, rspMsg);
+            RspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
         }
 
         //delete
         public dynamic DeleteCall(Enum endpt, string query = "", int expectedCode = 200)
         {
             StartStep(endpt, "Delete", expectedCode);
-            var ept = $"{endpt.Api()}{query}";
-            var rspMsg = Client.DeleteAsync(ept).Result;
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
+            RspMsg = Client.DeleteAsync(ept).Result;
 
-            AssertResult(expectedCode, rspMsg);
+            AssertResult(expectedCode, RspMsg);
 
-            return rspMsg.GetRsp();
+            return RspMsg.GetRsp();
+        }
+
+        public dynamic DeleteCall(Enum endpt, object body, string query = "", int expectedCode = 200)
+        {
+            StartStep(endpt, "Delete", expectedCode);
+            var ept = $"{RootEndpt}{endpt.Api()}{query}";
+
+            var request = new HttpRequestMessage(HttpMethod.Delete, ept)
+            {
+                Content = FormatBody(body)
+            };
+
+            RspMsg = Client.SendAsync(request).Result;
+
+            AssertResult(expectedCode, RspMsg);
+
+            return RspMsg.GetRsp();
+        }
+
+        //patch
+        public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200)
+        {
+            StartStep(endpt, "Patch", expectedCode);
+            var data = FormatBody(body);
+            RspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
+            var a = RspMsg.Content.ReadAsStringAsync();
+            AssertResult(expectedCode, RspMsg);
+
+            return RspMsg.GetRsp();
         }
 
         private HttpContent FormatBody(object body)
@@ -108,6 +161,7 @@ namespace aUI.Automation.HelperObjects
             return ApplicationType switch
             {
                 "application/x-www-form-urlencoded" => new FormUrlEncodedContent((IEnumerable<KeyValuePair<string, string>>)body),
+                "application/xml" => new StringContent(body.ToString(), Encoding.UTF8, ApplicationType),
                 _ => new StringContent(JsonConvert.SerializeObject(body), Encoding.UTF8, ApplicationType),
             };
         }

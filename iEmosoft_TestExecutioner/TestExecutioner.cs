@@ -68,7 +68,13 @@ namespace aUI.Automation
             {
                 //TODO Modify Dispose to deal with null test author
                 //TODO deal with null driver on screenshot failures
-                TestAuthor = new AutomationFactory().CreateAuthor();
+                var factory = new AutomationFactory();
+                if (Directory.Exists(factory.Configuration.TestReportFilePath))
+                {
+                    Directory.Delete(factory.Configuration.TestReportFilePath, true);
+                }
+
+                TestAuthor = factory.CreateAuthor();
                 TestAuthor.StartNewTestCase(testCaseHeader);
 
                 StartTime = DateTime.Now;
@@ -310,9 +316,12 @@ namespace aUI.Automation
             return RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().Alert();
         }
 
-        public void NavigateTo(string url)
+        public void NavigateTo(string url, string expectedResult = "")
         {
-            TestAuthor.BeginTestCaseStep("Navigate to " + url);
+            if (!string.IsNullOrEmpty(expectedResult) && ReportingEnabled)
+            {
+                BeginTestCaseStep("Navigate to " + url, expectedResult);
+            }
 
             UiDriver.MaximizeWindow();
             UiDriver.NavigateTo(url);
@@ -380,7 +389,30 @@ namespace aUI.Automation
             }
         }
 
-        public void FailCurrentStep(string expectedResult, string actualResult)
+        public string TestStackTrace
+        {
+            get {
+                return TestContext.CurrentContext.Result.StackTrace;
+            }
+        }
+
+        public Exception FailCurrentStep(Exception unexpectedException)
+        {
+            if (CurrentStep == null)
+            {
+                FailTest(unexpectedException);
+            }
+            else
+            {
+                string msg = "An Unexpected error occurred. " + unexpectedException.ToDeepMessage();
+                FailCurrentStep(null, msg, true);
+                Assert.True(false, msg);
+            }
+
+            return unexpectedException;
+
+        }
+        public void FailCurrentStep(string expectedResult, string actualResult, bool isShowStoppingError = false)
         {
             TestPassed = false;
             var currentStep = CurrentStep;
@@ -400,10 +432,16 @@ namespace aUI.Automation
 
                 CaptureScreen(actualResult);
             }
+
+            if (isShowStoppingError)
+            {
+                Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
+            }
         }
 
         public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string actualResult = "", bool captureImage = false)
         {
+            stepDescription = stepDescription.Replace(Environment.NewLine, "").Replace("\"","");
             if (TestAuthor != null)
             {
                 TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, actualResult);
@@ -413,6 +451,16 @@ namespace aUI.Automation
             {
                 CaptureScreen();
             }
+        }
+
+        public void AssociateBug(string bugNumber)
+        {
+            TestAuthor.AssociateBug(bugNumber);
+        }
+
+        public void DisassociateBug(string bugNumber)
+        {
+            TestAuthor.DisassociateBug(bugNumber);
         }
 
         public TestCaseStep CurrentStep
@@ -492,6 +540,24 @@ namespace aUI.Automation
             catch
             {
                 return null;
+            }
+        }
+
+        public static bool FailTestBeforeItEvenRan(TestCaseHeaderData testCaseHeader, string reason)
+        {
+            try
+            {
+                using (var e = new TestExecutioner(testCaseHeader))
+                {
+                    e.BeginTestCaseStep("Unable to launch test, test failed before it began");
+                    e.FailCurrentStep("", reason, true);
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -628,24 +694,6 @@ namespace aUI.Automation
             }
         }
 
-        public void SwitchFrames(Enum elEnum)
-        {
-            var el = new ElementObject(elEnum);
-
-            SwitchFrames(Action.ElementFinder(el));
-        }
-
-        public void SwitchFrames(By by)
-        {
-            IWebElement frame = RawSeleniumWebDriver_AvoidCallingDirectly.FindElement(by);
-            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().Frame(frame);
-        }
-
-        public void SwitchToMainFrame()
-        {
-            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().DefaultContent();
-        }
-
         public void SwitchWindows(bool first = true)
         {
             var window = RawSeleniumWebDriver_AvoidCallingDirectly.WindowHandles[^1];
@@ -760,7 +808,7 @@ namespace aUI.Automation
 
         public void NavBack()
         {
-            TestAuthor.BeginTestCaseStep("Navigate back to the prior page");
+            BeginTestCaseStep("Navigate back to the prior page");
             RawSeleniumWebDriver_AvoidCallingDirectly.Navigate().Back();
         }
 
@@ -768,6 +816,28 @@ namespace aUI.Automation
 
         #region Element Helper Methods
         #region Singles
+        public ElementResult UploadImage(ElementObject ele)
+        {
+            ele.Action = ElementAction.Wait;
+            var temp = Action.ExecuteAction(ele);
+            
+            try
+            {
+                temp.RawEle.SendKeys(ele.Text);
+            }
+            catch
+            {
+                temp.Success = false;
+            }
+
+            return temp;
+        }
+
+        public ElementResult UploadImage(Enum ele, string path)
+        {
+            var obj = new ElementObject(ele, path) { Action = ElementAction.Wait, WaitType = Wait.Presence };
+            return UploadImage(obj);
+        }
 
         //TODO Add wait for element and/or 'get element'
         public ElementResult Click(ElementObject ele)
@@ -1093,13 +1163,18 @@ namespace aUI.Automation
         #endregion
 
         #region Specialty Element Helpers
-        public (List<ElementResult> header, List<List<ElementResult>> body) ReadTable(Enum tableRef, bool scroll = false)
+        public (List<ElementResult> header, List<List<ElementResult>> body) ReadTable(Enum tableRef, bool scroll = false, ElementResult start = null)
         {
             var table = WaitFor(tableRef);
+            if(start != null)
+            {
+                table = start.WaitFor(tableRef);
+            }
+
             var headers = table.GetTexts(new ElementObject(ElementType.Tag, "th"));
 
-            var body = table.GetText(new ElementObject(ElementType.Tag, "tbody") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
-            var rows = body.GetTexts(new ElementObject(ElementType.Tag, "tr") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
+            var body = table.WaitFor(new ElementObject(ElementType.Tag, "tbody") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
+            var rows = body.WaitForAll(new ElementObject(ElementType.Tag, "tr") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
             var tableBody = new List<List<ElementResult>>();
 
             foreach (var row in rows)
@@ -1109,6 +1184,31 @@ namespace aUI.Automation
             }
 
             return (headers, tableBody);
+        }
+
+        public (List<ElementResult> header, List<List<ElementResult>> body) ReadTableColumn(Enum tableRef, string header, bool scroll = false)
+        {
+            var table = WaitFor(tableRef);
+            var headers = table.GetTexts(new ElementObject(ElementType.Tag, "th"));
+
+            var index = headers.FindIndex(x => x.Text.ToLower().Equals(header.ToLower()));
+
+            if(index < 0)
+            {
+                return (null, null);
+            }
+
+            var body = table.WaitFor(new ElementObject(ElementType.Tag, "tbody") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
+            var rows = body.WaitForAll(new ElementObject(ElementType.Tag, "tr") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
+            var tableBody = new List<List<ElementResult>>();
+
+            foreach (var row in rows)
+            {
+                var cells = row.WaitForAll(new ElementObject(ElementType.Tag, "td") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
+                tableBody.Add(new List<ElementResult>() { cells[index].GetText(new ElementObject() { Scroll = false, MaxWait = 0 }) });
+            }
+
+            return (new List<ElementResult>() { headers[index] }, tableBody);
         }
         #endregion
         #endregion
@@ -1166,8 +1266,11 @@ namespace aUI.Automation
             }
             catch { }
 
-            ProcessTestResults();
-
+            try
+            {
+                ProcessTestResults();
+            }
+            catch { }
             //Close the browser
             Quit();
             GC.SuppressFinalize(this);

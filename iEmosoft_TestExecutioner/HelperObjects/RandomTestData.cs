@@ -16,7 +16,7 @@ namespace aUI.Automation.HelperObjects
             Countries = new List<string>() { "United States", "Canada", "Mexico", "Liberia", "Houndouras", "Brazil", "France", "Germany", "United Kingdom", "Russia", "Japan", "China", "Austrailia", "Sweden", "Norway" };
             States = new List<string>() { "Alabama", "Alaska", "Connecticut", "Minnesota", "Wisconsin", "Illinois", "Iowa", "North Dakota", "South Dakota", "Kentucky", "Tennesee", "Texas", "New York", "California", "Wyoming", "Oregon", "Maine", "Florida" };
             Cities = new List<string>() { "Jacksonville", "Minneapolis", "St. Paul", "Duluth", "Hopkins", "Hastings", "Little Falls", "Paris", "Rome", "London", "Moscow", "York", "Waconia", "Minnetonka", "Wayzata", "Jamestown", "Montgomery", "Excelsior" };
-
+            Vehicles = new List<(int, string, string)>() { (2010, "Toyota", "Camry"), (2011, "Toyota", "4Runner"), (2014, "Honda", "Accord"), (2020, "Nissan", "Altima") };
         }
         public List<string> FirstNames { get; set; }
         public List<string> LastNames { get; set; }
@@ -24,6 +24,7 @@ namespace aUI.Automation.HelperObjects
         public List<string> Countries { get; set; }
         public List<string> Cities { get; set; }
         public List<string> States { get; set; }
+        public List<(int, string, string)> Vehicles { get; set; }
 
         public string GetRandomString(int length, bool spaces = false)
         {
@@ -86,6 +87,11 @@ namespace aUI.Automation.HelperObjects
             return States[Rnd.Next(0, States.Count - 0)];
         }
 
+        public (int Year, string Make, string Model) GetRandomVehicle()
+        {
+            return Vehicles[Rnd.Next(0, Vehicles.Count - 0)];
+        }
+
         public string GetGuidSubString(int guidLength)
         {
             if (guidLength > 0)
@@ -113,7 +119,7 @@ namespace aUI.Automation.HelperObjects
 
         public bool GetRandomBoolean()
         {
-            return Rnd.Next(0, 1) == 1;
+            return Rnd.Next(0, 2) == 1;
         }
 
         public string GetRandomEmailAddress(string firstName, string lastName)

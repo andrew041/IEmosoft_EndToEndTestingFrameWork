@@ -51,6 +51,21 @@ namespace aUI.Automation.Enums
             }
         }
 
+        public static int[] IntArr(this Enum field)
+        {
+            var fi = field.GetType().GetField(field.ToString());
+            var attributes = (IntArrAttribute[])fi.GetCustomAttributes(typeof(IntArrAttribute), false);
+
+            if (attributes.Length > 0)
+            {
+                return attributes[0].IntArr;
+            }
+            else
+            {
+                return new int[] { };
+            }
+        }
+
         public static ElementType Type(this Enum field)
         {
             var fi = field.GetType().GetField(field.ToString());
@@ -109,6 +124,17 @@ namespace aUI.Automation.Enums
             {
                 return related;
             }
+        }
+    }
+
+
+    [AttributeUsage(AttributeTargets.Enum | AttributeTargets.Field)]
+    public class IntArrAttribute : Attribute
+    {
+        public int[] IntArr { get; }
+        public IntArrAttribute(int[] iArr)
+        {
+            IntArr = iArr;
         }
     }
 
