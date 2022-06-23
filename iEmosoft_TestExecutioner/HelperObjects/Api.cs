@@ -63,7 +63,7 @@ namespace aUI.Automation.HelperObjects
             //Client.DefaultRequestHeaders.Accept
             ApplicationType = appType;
             Client.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue(appType));
+                new MediaTypeWithQualityHeaderValue(acceptType));
         }
 
         public void SetRootEndpt(string root)
