@@ -3,8 +3,8 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
-using System.Web;
 
 namespace aUI.Automation.HelperObjects
 {
@@ -26,13 +26,24 @@ namespace aUI.Automation.HelperObjects
 
             Client = new();
             Client.BaseAddress = new Uri(baseUrl);
-            Client.DefaultRequestHeaders.Accept.Add(
-                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(appType));
+            Client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(ApplicationType));
+        }
+
+        public Api(TestExecutioner te, HttpClientHandler handler, string baseUrl)
+        {
+            TE = te;
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                baseUrl = Config.GetConfigSetting("ApiUrl", "");
+            }
+
+            Client = new(handler);
+            Client.BaseAddress = new Uri(baseUrl);
         }
 
         public void SetAuthentication(string authKey, string type = "Bearer")
         {
-            Client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(type, authKey);
+            Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(type, authKey);
         }
 
         public void UpdateRequestType(string type)
@@ -41,7 +52,7 @@ namespace aUI.Automation.HelperObjects
             //Client.DefaultRequestHeaders.Accept
             ApplicationType = type;
             Client.DefaultRequestHeaders.Accept.Add(
-                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(type));
+                new MediaTypeWithQualityHeaderValue(type));
         }
 
         //get
