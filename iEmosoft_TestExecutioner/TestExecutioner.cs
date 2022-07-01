@@ -693,6 +693,24 @@ namespace aUI.Automation
                 throw new Exception(msg);
             }
         }
+		
+		public void SwitchFrames(Enum elEnum)
+        {
+            var el = new ElementObject(elEnum);
+
+            SwitchFrames(Action.ElementFinder(el));
+        }
+
+        public void SwitchFrames(By by)
+        {
+            IWebElement frame = RawSeleniumWebDriver_AvoidCallingDirectly.FindElement(by);
+            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().Frame(frame);
+        }
+
+        public void SwitchToMainFrame()
+        {
+            RawSeleniumWebDriver_AvoidCallingDirectly.SwitchTo().DefaultContent();
+        }
 
         public void SwitchWindows(bool first = true)
         {
