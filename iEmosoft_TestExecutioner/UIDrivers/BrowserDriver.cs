@@ -9,6 +9,7 @@ using OpenQA.Selenium.Remote;
 using OpenQA.Selenium.Support.UI;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 
 namespace aUI.Automation.UIDrivers
@@ -60,6 +61,9 @@ namespace aUI.Automation.UIDrivers
                     chromeROps.AddArgument("--disable-extensions");
                     Browser = new RemoteWebDriver(new Uri(uri), chromeROps);
                     DriverType = "Chrome";
+                    CodePagesEncodingProvider.Instance.GetEncoding(437);
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
                     break;
                 case BrowserDriverEnumeration.Firefox:
                     var ffOps = new FirefoxOptions();
@@ -74,6 +78,9 @@ namespace aUI.Automation.UIDrivers
                     ffROps.AddArgument("--disable-extensions");
                     Browser = new RemoteWebDriver(new Uri(uri), ffROps);
                     DriverType = "FireFox";
+                    CodePagesEncodingProvider.Instance.GetEncoding(437);
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
                     break;
                 case BrowserDriverEnumeration.IE:
                     var ieOps = new InternetExplorerOptions();
@@ -107,6 +114,9 @@ namespace aUI.Automation.UIDrivers
                     var capabilities = GetDesiredCapabilities(configuration);
                     var url = new Uri("http://" + configuration.SauceLabsKey + "@ondemand.saucelabs.com:80/wd/hub");
                     Browser = new RemoteWebDriver(url, capabilities);
+                    CodePagesEncodingProvider.Instance.GetEncoding(437);
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
                     break;
             }
         }
