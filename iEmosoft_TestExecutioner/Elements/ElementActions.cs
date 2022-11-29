@@ -163,7 +163,14 @@ namespace aUI.Automation.Elements
                 elements = FindElements(ele, finder, starter?.RawEle);
             }
             var rtn = new List<ElementResult>();
-            elements.ForEach(x => rtn.Add(CompleteAction(ele, x)));
+            foreach(var element in elements)
+            {
+                if (TE.TestTimeLimit < DateTime.Now)
+                {
+                    TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime).TotalSeconds} seconds");
+                }
+                rtn.Add(CompleteAction(ele, element));
+            }
             return rtn;
         }
 
@@ -733,7 +740,7 @@ namespace aUI.Automation.Elements
                 return;
             }
 
-            js.ExecuteScript($"arguments[0].scrollIntoView({{block: \"{location}\"}});", elementRef.RawEle);
+            js.ExecuteScript($"arguments[0].scrollIntoView({{block: \"{location}\", inline: \"center\"}});", elementRef.RawEle);
         }
         public static ElementResult Click(this ElementResult elementRef, ElementObject ele = null)
         {
