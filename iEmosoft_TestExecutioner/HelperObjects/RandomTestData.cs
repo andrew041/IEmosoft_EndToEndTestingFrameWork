@@ -101,6 +101,20 @@ namespace aUI.Automation.HelperObjects
 
             return "";
         }
+        
+        public string GetRandomVIN()
+        {
+
+            var ops = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
+            var stringChars = new char[17];
+
+            for (int i = 0; i < stringChars.Length; i++)
+            {
+                stringChars[i] = ops[Rnd.Next(0, ops.Length)];
+            }
+
+            return new string(stringChars);
+        }
 
         public string GetRandomCountry()
         {

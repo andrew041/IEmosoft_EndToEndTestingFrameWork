@@ -3,8 +3,8 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
+using System.Web;
 
 namespace aUI.Automation.HelperObjects
 {
@@ -15,6 +15,8 @@ namespace aUI.Automation.HelperObjects
         TestExecutioner TE;
         string ApplicationType = "application/json";
         string RootEndpt = "";
+        List<int> RetryCode = new List<int> { 502, 503, 504 };
+        int RetryWait = 750;
         public HttpResponseMessage RspMsg;
 
         public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json")
@@ -28,24 +30,13 @@ namespace aUI.Automation.HelperObjects
 
             Client = new();
             Client.BaseAddress = new Uri(baseUrl);
-            Client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(ApplicationType));
-        }
-
-        public Api(TestExecutioner te, HttpClientHandler handler, string baseUrl)
-        {
-            TE = te;
-            if (string.IsNullOrEmpty(baseUrl))
-            {
-                baseUrl = Config.GetConfigSetting("ApiUrl", "");
-            }
-
-            Client = new(handler);
-            Client.BaseAddress = new Uri(baseUrl);
+            Client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(appType));
         }
 
         public void SetAuthentication(string authKey, string type = "Bearer")
         {
-            Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(type, authKey);
+            Client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(type, authKey);
         }
 
         public void AddHeader(string name, string value)
@@ -63,7 +54,7 @@ namespace aUI.Automation.HelperObjects
             //Client.DefaultRequestHeaders.Accept
             ApplicationType = appType;
             Client.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue(acceptType));
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(acceptType));
         }
 
         public void SetRootEndpt(string root)
@@ -78,7 +69,7 @@ namespace aUI.Automation.HelperObjects
         }
 
         //get
-        public dynamic GetCall(Enum endpt, string query = "", int expectedCode = 200)
+        public dynamic GetCall(Enum endpt, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Get", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
@@ -86,48 +77,83 @@ namespace aUI.Automation.HelperObjects
             RspMsg = Client.GetAsync(ept).Result;
             var a = RspMsg.Content.ReadAsStringAsync();
             //Console.WriteLine("rsp: " + a.Result);
-            AssertResult(expectedCode, RspMsg);
-
+            if(retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return GetCall(endpt, query, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
+            //Console.WriteLine(((object)RspMsg.GetRsp()).ToString());
             return RspMsg.GetRsp();
         }
 
         //post
-        public dynamic PostCall(Enum endpt, object body, string vars, int expectedCode = 200)
+        public dynamic PostCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Post", expectedCode);
             var data = FormatBody(body);
             RspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
             var a = RspMsg.Content.ReadAsStringAsync().Result;
-            AssertResult(expectedCode, RspMsg);
 
+            //Console.WriteLine($"URL: {RootEndpt + endpt.Api()}");
+            //Console.WriteLine($"VARS: {vars}");
+            //Console.WriteLine($"Body: {data.ReadAsStringAsync().Result}");
+            //Console.WriteLine("RESULT:");
+            //Console.WriteLine(a);
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return PostCall(endpt, body, vars, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
             return RspMsg.GetRsp();
         }
 
         //put
-        public dynamic PutCall(Enum endpt, object body, string vars, int expectedCode = 200)
+        public dynamic PutCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Put", expectedCode);
             var data = FormatBody(body);
             RspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
             var a = RspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, RspMsg);
-
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return PutCall(endpt, body, vars, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
             return RspMsg.GetRsp();
         }
 
         //delete
-        public dynamic DeleteCall(Enum endpt, string query = "", int expectedCode = 200)
+        public dynamic DeleteCall(Enum endpt, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Delete", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
             RspMsg = Client.DeleteAsync(ept).Result;
 
-            AssertResult(expectedCode, RspMsg);
-
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return DeleteCall(endpt, query, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
             return RspMsg.GetRsp();
         }
 
-        public dynamic DeleteCall(Enum endpt, object body, string query = "", int expectedCode = 200)
+        public dynamic DeleteCall(Enum endpt, object body, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Delete", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
@@ -139,24 +165,38 @@ namespace aUI.Automation.HelperObjects
 
             RspMsg = Client.SendAsync(request).Result;
 
-            AssertResult(expectedCode, RspMsg);
-
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return DeleteCall(endpt, body, query, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
             return RspMsg.GetRsp();
         }
 
         //patch
-        public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200)
+        public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Patch", expectedCode);
             var data = FormatBody(body);
             RspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
             var a = RspMsg.Content.ReadAsStringAsync();
-            AssertResult(expectedCode, RspMsg);
-
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return PatchCall(endpt, body, vars, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
             return RspMsg.GetRsp();
         }
 
-        private HttpContent FormatBody(object body)
+        public HttpContent FormatBody(object body)
         {
             return ApplicationType switch
             {
@@ -176,9 +216,14 @@ namespace aUI.Automation.HelperObjects
 
         private void StartStep(Enum endpt, string type, int expectedCode)
         {
-            if (TE != null)
+            if (TE != null && expectedCode != 0)
             {
                 TE.BeginTestCaseStep($"API {type} call to {endpt}", expectedCode.ToString());
+
+                if (DateTime.Now >= TE.TestTimeLimit)
+                {
+                    TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime)} (hh:mm:ss)");
+                }              
             }
         }
 

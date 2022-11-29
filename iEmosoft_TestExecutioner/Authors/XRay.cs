@@ -1,12 +1,17 @@
-﻿using aUI.Automation.Enums;
+﻿using Amazon.SQS;
+using Amazon.SQS.Model;
+using Amazon.SQS.ExtendedClient;
+using aUI.Automation.Enums;
 using aUI.Automation.HelperObjects;
 using aUI.Automation.ModelObjects;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using Amazon.S3;
 
 namespace aUI.Automation.Authors
 {
@@ -17,6 +22,7 @@ namespace aUI.Automation.Authors
             [Api("/api/v2/authenticate")] Authenticate,
             [Api("/api/v2/graphql")] Graph,
             [Api("/api/v2/import/execution")] ImportResults,
+            [Api("")] EmptyAPI,
         }
 
         /* Config settings needed:
@@ -28,7 +34,7 @@ namespace aUI.Automation.Authors
          * XRayTestFolder
          */
 
-        int MinuteThreshold = 45;
+        int MinuteThreshold = 40;
         int ApiWaitTime = 0;
         private int EditTestThreshold = 150;
         string Project = Config.GetConfigSetting("XRayProject");
@@ -36,35 +42,80 @@ namespace aUI.Automation.Authors
         string RetiredFolder = Config.GetConfigSetting("XRayRetiredFolder");
         string Env = Config.GetEnvironment();
         string ExecutionName = Config.GetConfigSetting("TestRunName", "Automation Test Execution");
+        string Queue = Config.GetConfigSetting("XRayQueue", "");
+        private string Auth = "";
+        
         string ExecutionId = "";
         string ExecutionKey = "";
-
+        private List<object> TestResults = new();
+        private object Lock2;
         List<string> TestEnvs = new List<string>();
         List<string> Folders = new List<string>();
         string ProjectId = "";
         Api ApiObj;
+        Api ApiQueue;
+        int TestGroups = 3;
+        AmazonS3Client S3Client;
+        IAmazonSQS SqsQueue;
+        AmazonSQSExtendedClient SqsExtend;
 
         List<XRayTest> Tests = new List<XRayTest>();
         object Locker;
         private DateTime LastCallTime;
 
-        public XRay(string testFolder = "")
+        #region ApiRestrictions
+        private void AddResultToList(object obj)
         {
-            LastCallTime = DateTime.Now;
-            ApiWaitTime = ((60/MinuteThreshold) * 1000) + 2;
-            Locker = new object();
-            ApiObj = new Api(null, Config.GetConfigSetting("XRayBase"));
-            ApiObj.SetAuthentication(GetAuthentication());
-            ProjectId = GetProjectSettings();
-
-            if (!string.IsNullOrEmpty(testFolder))
+            lock (Lock2)
             {
-                TestFolder = testFolder;
+                TestResults.Add(obj);
+            }
+        }
+
+        private List<object> GetResultsFromList(bool restrict = true)
+        {
+            lock (Lock2)
+            {
+                if (!string.IsNullOrEmpty(Queue) && restrict)
+                {
+                    var temp = new List<object>()
+                    {
+                        TestResults[0]
+                    };
+                    TestResults.RemoveAt(0);
+                    return temp;
+                }
+                if (TestResults.Count >= 3 && restrict)
+                {
+                    var temp = new List<object>()
+                    {
+                        TestResults[0],
+                        TestResults[1],
+                        TestResults[2]
+                    };
+
+                    TestResults.RemoveRange(0, 2);
+                    return temp;
+                } else if (!restrict && TestResults.Count > 0)
+                {
+                    var temp = new List<object>();
+                    TestResults.ForEach(x => temp.Add(x));
+
+                    TestResults = new List<object>();
+                    return temp;
+                }
+
+                var temp3 = new List<object>()
+                    {
+                        TestResults[0]
+                    };
+                TestResults.RemoveAt(0);
+                return temp3;
             }
 
-            GetFolders(ProjectId);
-            GetAllTestCases();
+            return null;
         }
+
         private void Wait()
         {
             try
@@ -81,6 +132,34 @@ namespace aUI.Automation.Authors
             }
 
             LastCallTime = DateTime.Now;
+        }
+        #endregion
+        public XRay(string testFolder = "")
+        {
+            LastCallTime = DateTime.Now;
+            ApiWaitTime = ((60/MinuteThreshold) * 1000) + 2;
+            Locker = new object();
+            Lock2 = new object();
+            ApiObj = new Api(null, Config.GetConfigSetting("XRayBase"));
+            Auth = GetAuthentication();
+            ApiObj.SetAuthentication(Auth);
+            if (!string.IsNullOrEmpty(Queue))
+            {
+                var bucket = Config.GetConfigSetting("QueueBucket");
+                SqsQueue = new AmazonSQSClient();
+                S3Client = new AmazonS3Client();
+                SqsExtend = new AmazonSQSExtendedClient(SqsQueue, new ExtendedClientConfiguration().WithLargePayloadSupportEnabled(S3Client, bucket));
+                ApiQueue = new Api(null, Config.GetConfigSetting("XRayQueueBase"), "application/x-www-form-urlencoded");
+            }
+            ProjectId = GetProjectSettings();
+
+            if (!string.IsNullOrEmpty(testFolder))
+            {
+                TestFolder = testFolder;
+            }
+
+            GetFolders(ProjectId);
+            GetAllTestCases();
         }
         #region Public methods
         public void CreateTestRun(List<string> testCases = null)
@@ -117,7 +196,8 @@ namespace aUI.Automation.Authors
             {
                 Wait();
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+            CheckCall(rsp);
 
             ExecutionKey = (string)rsp.data.createTestExecution.testExecution.jira.key;
             ExecutionId = (string)rsp.data.createTestExecution.testExecution.issueId;
@@ -138,6 +218,7 @@ namespace aUI.Automation.Authors
 
         public void CloseTestRun()
         {
+            SubmitResults(false);
             //looks like 1-2 jira calls
         }
 
@@ -156,7 +237,132 @@ namespace aUI.Automation.Authors
             AddTestToTestRun(testCase.IssueId);
             AddTestResults(te, testCase.IssueKey);
         }
+
+        public void SetupFailures(List<string> testNames, string error = "")
+        {
+            var start = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ssK");
+            var finish = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ssK");
+            var status = "FAILED";
+
+            var comment = $"*Test failure during setup* {Environment.NewLine}Failed due to: {error}";
+
+            var info = new
+            {
+                finishDate = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ssK"),
+            };
+
+            //generate this from each test object we get
+            var tests = new List<object>();
+
+            foreach (var test in testNames)
+            {
+                var testCase = Tests.FirstOrDefault(x => x.Name.Trim().Equals(test.Trim()));
+
+                if (testCase != null)
+                {
+                    tests.Add(new
+                    {
+                        testKey = testCase.IssueKey,
+                        start,
+                        finish,
+                        comment,
+                        status,
+                        steps = new object[0]
+                    });
+                }
+            }
+
+            //submit results
+            if(tests.Count > 0)
+            {
+                var body = new
+                {
+                    testExecutionKey = ExecutionKey,
+                    info,
+                    tests = tests.ToArray()
+                };
+
+                dynamic rsp;
+                if (string.IsNullOrEmpty(Queue))
+                {
+                    lock (Locker)
+                    {
+                        Wait();
+                    }
+
+                    rsp = ApiObj.PostCall(Endpts.ImportResults, body, "", 0);
+                    CheckCall(rsp);
+                }
+                else
+                {
+                    ImportCall(body);
+                }
+            }
+        }
         #endregion
+
+        private void ImportCall(object body)
+        {
+            var url = Config.GetConfigSetting("XRayQueueBase") + Queue;
+
+            var rand = new Random();
+            var num = rand.Next(0, rand.Next(100, 999999999));
+            var bodyFormatted = ApiObj.FormatBody(body).ReadAsStringAsync().Result;
+
+            var attribute = new Dictionary<string, MessageAttributeValue>
+            {
+                { "URL", new MessageAttributeValue() { DataType = "String", StringValue = $"{Config.GetConfigSetting("XRayBase")}{Endpts.ImportResults.Api()}" }},
+                { "Auth", new MessageAttributeValue() { DataType = "String", StringValue = Auth } },
+                { "Body", new MessageAttributeValue() { DataType = "String", StringValue = bodyFormatted } },
+                { "Type", new MessageAttributeValue() { DataType = "String", StringValue = "standard" } }
+            };
+
+            var rq = new SendMessageRequest()
+            {
+                MessageAttributes = attribute,
+                QueueUrl = url,
+                MessageBody = "Import Test Results",
+                MessageDeduplicationId = num.ToString(),
+                MessageGroupId = "2"
+            };
+
+            var bodyCount = ASCIIEncoding.ASCII.GetBytes(bodyFormatted);
+            var authCount = ASCIIEncoding.ASCII.GetBytes(Auth);
+            var dIdCount = ASCIIEncoding.ASCII.GetBytes(num.ToString());
+            var urlCount = ASCIIEncoding.ASCII.GetBytes($"{Config.GetConfigSetting("XRayBase")}{Endpts.ImportResults.Api()}");
+            var b = "";
+            var c = bodyCount.Length;
+            b = "";
+
+            var rsp = SqsQueue.SendMessageAsync(rq).Result;
+        }
+
+        private void QueueCall(string query)
+        {
+            var url = Config.GetConfigSetting("XRayQueueBase") + Queue;
+            var rand = new Random();
+            var num = rand.Next(0, rand.Next(100, 999999999));
+            var type = query.StartsWith("query") ? "query" : "mutation";
+
+            var attribute = new Dictionary<string, MessageAttributeValue>
+            {
+                { "URL", new MessageAttributeValue() { DataType = "String", StringValue = $"{Config.GetConfigSetting("XRayBase")}{Endpts.Graph.Api()}" }},
+                { "Auth", new MessageAttributeValue() { DataType = "String", StringValue = Auth } },
+                { "Body", new MessageAttributeValue() { DataType = "String", StringValue = query } },
+                { "Type", new MessageAttributeValue() { DataType = "String", StringValue = "query" } }
+            };
+
+            var rq = new SendMessageRequest()
+            {
+                MessageAttributes = attribute,
+                QueueUrl = url,
+                MessageBody = "GraphQL Call",
+                MessageDeduplicationId = num.ToString(),
+                MessageGroupId = "2"
+            };
+
+            var rsp = SqsQueue.SendMessageAsync(rq).Result;
+        }
 
         private string GetProjectSettings()
         {
@@ -167,7 +373,9 @@ namespace aUI.Automation.Authors
             {
                 Wait();
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+
+            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+            CheckCall(rsp);
 
             foreach (var env in ApiHelper.GetRspList(rsp.data.getProjectSettingstestEnvironments))
             {
@@ -186,7 +394,9 @@ namespace aUI.Automation.Authors
             {
                 Wait();
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+
+            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+            CheckCall(rsp);
 
             //deal with nested folders later
             foreach (var folder in ApiHelper.GetRspList(rsp.data.getFolder.folders))
@@ -226,7 +436,8 @@ namespace aUI.Automation.Authors
                 {
                     Wait();
                 }
-                rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+                rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                CheckCall(rsp);
 
                 totalCount = (int)rsp.data.getTests.total;
 
@@ -251,7 +462,7 @@ namespace aUI.Automation.Authors
                 MoveTestCase(test.IssueId, RetiredFolder);
                 CreateTestCase(testName, testSteps);
             }
-            else if (diff > 2)
+            else if (diff > 5)
             {
                 var mutations = new List<string>();
                 var removeItems = true;
@@ -272,10 +483,9 @@ namespace aUI.Automation.Authors
                     }
                 }
 
-                if (removeItems || testSteps.Count < test.Steps.Count)
+                if (testSteps.Count < test.Steps.Count)
                 {
-                    //TODO figure out how to remove steps if any remain
-                    for (int i = index; i < test.Steps.Count; i++)
+                    for (int i = testSteps.Count; i < test.Steps.Count; i++)
                     {
                         mutations.Add($"removeTestStep(stepId: \"{(string)test.Steps[i].id}\")");
                     }
@@ -285,7 +495,7 @@ namespace aUI.Automation.Authors
                 for (int i = index; i < test.Steps.Count && i < testSteps.Count; i++)
                 {
                     GenerateTestSteps(new List<TestCaseStep>() { testSteps[i] }, out var str);
-                    mutations.Add($"updateTestStep(stepId: \"{(string)test.Steps[i].id}\" step: {str[1..^1]})");
+                    mutations.Add($"updateTestStep(stepId: \"{(string)test.Steps[i].id}\" step: {str[1..^1]}){{warnings}}");
                 }
 
                 //add new test steps
@@ -295,16 +505,26 @@ namespace aUI.Automation.Authors
                     mutations.Add($"addTestStep(issueId: \"{(string)test.IssueId}\" step: {str[1..^1]}){{id}}");
                 }
 
-                for (int i = 0; i < mutations.Count; i += 10)
+                for (int i = 0; i < mutations.Count; i += 12)
                 {
-                    var query = $"mutation {{ {string.Join(" ", GetMutationSubset(mutations, i))} }}";
+                    var query = $"mutation {{ {string.Join(" ", GetMutationSubset(mutations, i, 12))} }}";
 
                     dynamic rsp;
-                    lock (Locker)
+                    if (string.IsNullOrEmpty(Queue))
                     {
-                        Wait();
+                        lock (Locker)
+                        {
+                            Wait();
+                        }
+
+                        query = query.Replace("\n", " ").Replace("\r", " ");
+                        rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                        CheckCall(rsp);
                     }
-                    rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+                    else
+                    {
+                        QueueCall(query);
+                    }
                 }
 
                 //TODO build call to add new test steps
@@ -364,24 +584,15 @@ namespace aUI.Automation.Authors
                 + " jira: {fields: { summary:\"" +
                 testName.Trim() + "\", project: {key: \"" + Project + "\"} }}" + folder + ") {test {issueId testType {name} steps {id action data result} jira(fields: [\"key\", \"summary\"])} warnings}}";
 
+            query = query.Replace("\n", " ").Replace("\r", " ");
 
             dynamic rsp;
             lock (Locker)
             {
                 Wait();
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
-
-            if (Convert.ToString((object)rsp).ToLower().Contains("error"))
-            {
-                try
-                {
-                    Console.WriteLine(Convert.ToString((object)rsp));
-
-                    Console.WriteLine($"Query: {query}");
-                }
-                catch { }
-            }
+            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+            CheckCall(rsp);
 
             var test = new XRayTest(rsp.data.createTest.test);
 
@@ -394,37 +605,63 @@ namespace aUI.Automation.Authors
             var query = "mutation {addTestsToFolder (projectId: \"" + ProjectId + "\", path: \"" + folder + "\", testIssueIds:[\"" + testId + "\"]) {folder {name path}}}";
 
             dynamic rsp;
-            lock (Locker)
+            if (string.IsNullOrEmpty(Queue))
             {
-                Wait();
+                lock (Locker)
+                {
+                    Wait();
+                }
+                rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                CheckCall(rsp);
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+            else
+            {
+                QueueCall(query);
+            }
         }
 
         private void AddTestToTestRun(string testId)
         {
-            var query = "mutation {addTestsToTestExecution(issueId: \"" + ExecutionId + "\" testIssueIds: [\"" + testId + "\"]) {addedTests warning}}";
-
-            dynamic rsp;
-            lock (Locker)
+            if (Tests.FindIndex(x => testId.Equals(((object)x.IssueId).ToString())) == -1)
             {
-                Wait();
+                var query = "mutation {addTestsToTestExecution(issueId: \"" + ExecutionId + "\" testIssueIds: [\"" + testId + "\"]) {addedTests warning}}";
+
+                dynamic rsp;
+                if (string.IsNullOrEmpty(Queue))
+                {
+                    lock (Locker)
+                    {
+                        Wait();
+                    }
+                    rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                    CheckCall(rsp);
+                }
+                else
+                {
+                    QueueCall(query);
+                }
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
         }
 
         private void RemoveTestFromTestRun(string testId)
         {
             var query = "mutation {removeTestsFromTestExecution(issueId: \"" + ExecutionId + "\" testIssueIds: [\"" + testId + "\"])}";
 
-
             dynamic rsp;
-            lock (Locker)
+            if (string.IsNullOrEmpty(Queue))
             {
-                Wait();
-                //rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+                lock (Locker)
+                {
+                    Wait();
+                    //rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+                }
+                rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                CheckCall(rsp);
             }
-            rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "");
+            else
+            {
+                QueueCall(query);
+            }
         }
 
         private void AddSkippedResult(TestExecutioner te, string testKey)
@@ -460,22 +697,9 @@ namespace aUI.Automation.Authors
                 tests = new object[] { test }
             };
 
-            dynamic rsp;
-            lock (Locker)
-            {
-                Wait();
-            }
-            rsp = ApiObj.PostCall(Endpts.ImportResults, body, "");
+            AddResultToList(body.tests[0]);
 
-            //check upload????????
-            if (Convert.ToString((object)rsp).ToLower().Contains("error"))
-            {
-                try
-                {
-                    Console.WriteLine(Convert.ToString((object)rsp));
-                }
-                catch { }
-            }
+            SubmitResults();
         }
 
         private void AddTestResults(TestExecutioner te, string testKey)
@@ -575,21 +799,52 @@ namespace aUI.Automation.Authors
                 }
             }
 
+            AddResultToList(body.tests[0]);
 
-            dynamic rsp;
-            lock (Locker)
+            SubmitResults();
+        }
+
+        private void SubmitResults(bool restricted = true)
+        {
+            var testBody = GetResultsFromList(restricted);
+
+            if(testBody != null)
             {
-                Wait();
-                //rsp = ApiObj.PostCall(Endpts.ImportResults, body, "");
-            }
-            rsp = ApiObj.PostCall(Endpts.ImportResults, body, "");
+                var info = new
+                {
+                    finishDate = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ssK"),
+                };
 
-            //check upload????????
-            if (Convert.ToString((object)rsp).ToLower().Contains("error"))
+                var body = new
+                {
+                    testExecutionKey = ExecutionKey,
+                    info,
+                    tests = testBody.ToArray()
+                };
+
+                dynamic rsp;
+                if (string.IsNullOrEmpty(Queue))
+                {
+                    lock (Locker)
+                    {
+                        Wait();
+                    }
+                    rsp = ApiObj.PostCall(Endpts.ImportResults, body, "", 0);
+                    CheckCall(rsp);
+                } else
+                {
+                    ImportCall(body);
+                }
+            }
+        }
+
+        private void CheckCall(dynamic rsp, [CallerMemberName] string callerName = "")
+        {
+            if (Convert.ToString((object)rsp).ToLower().Contains("errors"))
             {
                 try
                 {
-                    Console.WriteLine(Convert.ToString((object)rsp));
+                    Console.WriteLine($"TIME: {DateTime.Now.ToString("HH:mm:ss.ff")} Called from: {callerName} {Convert.ToString((object)rsp)}");
                 }
                 catch { }
             }
@@ -662,7 +917,8 @@ namespace aUI.Automation.Authors
                 Wait();
                 //rsp = ApiObj.PostCall(Endpts.Authenticate, body, "");
             }
-            rsp = ApiObj.PostCall(Endpts.Authenticate, body, "");
+            rsp = ApiObj.PostCall(Endpts.Authenticate, body, "", 0);
+            CheckCall(rsp);
 
             return (string)rsp;
         }
@@ -690,7 +946,7 @@ namespace aUI.Automation.Authors
 
             for (int i = 0; i < maxCount; i++)
             {
-                if (!currSteps[i].StepDescription.Replace("\\", "-").Equals((string)Steps[i].action))
+                if (!currSteps[i].StepDescription.Replace("\\", "-").Replace("\n", " ").Replace("\r", " ").Equals((string)Steps[i].action))
                 {
                     diffCount++;
                 }
