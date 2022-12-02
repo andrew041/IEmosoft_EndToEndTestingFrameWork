@@ -12,6 +12,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using iTextSharp.text.pdf;
+using iTextSharp.text.pdf.parser;
+using System.Text;
+using System.Net;
 
 namespace aUI.Automation
 {
@@ -23,7 +27,7 @@ namespace aUI.Automation
         private bool ReportingEnabled = true;
         private bool TestPassed = true;
         public DateTime StartTime { get; private set; }
-        public DateTime TestTimeLimit { get; private set; } = DateTime.Now.AddHours(12);
+        public DateTime TestTimeLimit { get; set; } = DateTime.Now.AddHours(12);
         public DateTime? DisposeTime { get; private set; } = null;
         private List<string> AllTestFiles = new();
         private PoolState poolState = new() { IsAvailable = true, IsPartOfTestExecutionerPool = false };
@@ -436,15 +440,16 @@ namespace aUI.Automation
             if (isShowStoppingError)
             {
                 Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
+                Assert.True(false, string.Format("Expected: {0}, Actual: {1}", expectedResult, actualResult));
             }
         }
 
-        public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string actualResult = "", bool captureImage = false)
+        public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string suppliedData = "", bool captureImage = false)
         {
             stepDescription = stepDescription.Replace(Environment.NewLine, "").Replace("\"","");
             if (TestAuthor != null)
             {
-                TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, actualResult);
+                TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, suppliedData);
             }
 
             if (captureImage || Config.RecordAllSteps) //add second parameter
@@ -1228,7 +1233,90 @@ namespace aUI.Automation
 
             return (new List<ElementResult>() { headers[index] }, tableBody);
         }
+
+        public List<ElementResult> ReadEmbeddedPDF(Enum embedRef)
+        {
+            return ReadEmbeddedPDF(new ElementObject(embedRef) { WaitType = Wait.Visible});
+        }
+        public List<ElementResult> ReadEmbeddedPDF(ElementType eType, string eRef)
+        {
+            return ReadEmbeddedPDF(new ElementObject(eType, eRef) { WaitType = Wait.Visible });
+        }
+        public List<ElementResult> ReadEmbeddedPDF(ElementObject pdfRef)
+        {
+            var pdfRoot = WaitFor(pdfRef);
+            var pages = pdfRoot.GetTexts(new ElementObject(ElementType.Xpath, ".//canvas/.."));
+            return pages;
+        }
+
+        public List<String> ReadEmbeddedPDF(string url)
+        {
+            List<string> pages = new();
+
+            using (var client = new WebClient())
+            {
+                var data = client.DownloadData(url);
+                using (PdfReader reader = new PdfReader(data))
+                {
+                    for (int page = 1; page <= reader.NumberOfPages; page++)
+                    {
+                        SimpleTextExtractionStrategy strat = new();
+                        string text = PdfTextExtractor.GetTextFromPage(reader, page, strat);
+                        pages.Add(text);
+                    }
+                }
+            }
+            return pages;
+        }
+
+        public List<String> ReadDownloadedPDF(string filepath)
+        {
+            List<string> pages = new();
+            using(PdfReader reader = new PdfReader(filepath))
+            {
+                for(int page = 1; page <= reader.NumberOfPages; page++)
+                {
+                    SimpleTextExtractionStrategy strat = new();
+                    string text = PdfTextExtractor.GetTextFromPage(reader, page, strat);
+                    pages.Add(text);
+                }
+            }
+            return pages;
+        }
+
         #endregion
+
+        #region Material UI Helpers
+        public (List<ElementResult> header, List<List<ElementResult>> body) ReadMUITable(Enum tableRef = null, bool scroll = false, ElementResult start = null)
+        {
+            var basex = ".//*[@role='";
+            var eo = new ElementObject(ElementType.Class, "MuiDataGrid-main");
+            if (tableRef != null)
+            {
+                eo = new ElementObject(tableRef);
+            }
+            var table = WaitFor(eo);
+            if (start != null)
+            {
+                table = start.WaitFor(eo);
+            }
+
+            var headers = table.GetTexts(new ElementObject(ElementType.Xpath, $"{basex}columnheader']"));
+
+            var rows = table.WaitForAll(new ElementObject(ElementType.Xpath, $".//*[contains(@class, 'MuiDataGrid-row')]") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });//set scroll to false
+            var tableBody = new List<List<ElementResult>>();
+
+            foreach (var row in rows)
+            {
+                var cells = row.GetTexts(new ElementObject(ElementType.Xpath, $"{basex}cell']") { Scroll = scroll, ScrollLoc = "start", MaxWait = 0 });
+                tableBody.Add(cells);
+            }
+
+            return (headers, tableBody);
+        }
+
+        #endregion
+
         #endregion
 
         public void FailLastStepIfFailureNotTriggered()
