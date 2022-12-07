@@ -1,6 +1,5 @@
 ﻿using Amazon.SQS;
 using Amazon.SQS.Model;
-using Amazon.SQS.ExtendedClient;
 using aUI.Automation.Enums;
 using aUI.Automation.HelperObjects;
 using aUI.Automation.ModelObjects;
@@ -11,7 +10,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
-using Amazon.S3;
 
 namespace aUI.Automation.Authors
 {
@@ -55,9 +53,7 @@ namespace aUI.Automation.Authors
         Api ApiObj;
         Api ApiQueue;
         int TestGroups = 3;
-        AmazonS3Client S3Client;
         IAmazonSQS SqsQueue;
-        AmazonSQSExtendedClient SqsExtend;
 
         List<XRayTest> Tests = new List<XRayTest>();
         object Locker;
@@ -104,13 +100,6 @@ namespace aUI.Automation.Authors
                     TestResults = new List<object>();
                     return temp;
                 }
-
-                var temp3 = new List<object>()
-                    {
-                        TestResults[0]
-                    };
-                TestResults.RemoveAt(0);
-                return temp3;
             }
 
             return null;
@@ -145,11 +134,14 @@ namespace aUI.Automation.Authors
             ApiObj.SetAuthentication(Auth);
             if (!string.IsNullOrEmpty(Queue))
             {
-                var bucket = Config.GetConfigSetting("QueueBucket");
+                TestGroups = 1;
                 SqsQueue = new AmazonSQSClient();
-                S3Client = new AmazonS3Client();
-                SqsExtend = new AmazonSQSExtendedClient(SqsQueue, new ExtendedClientConfiguration().WithLargePayloadSupportEnabled(S3Client, bucket));
                 ApiQueue = new Api(null, Config.GetConfigSetting("XRayQueueBase"), "application/x-www-form-urlencoded");
+                //ApiQueue.SetAuthentication("Credential=ASIAU5LQAJ6UZB2Y3CXY/20221031/us-east-1/sqs/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, Signature=c4a623ac659ad91cd6c10c00e9f91e8f9dfc402800942a9e2073b4b4438a489a", "AWS4-HMAC-SHA256");
+                //ApiQueue.AddHeader("Authorization", "AWS4-HMAC-SHA256 Credential=ASIAU5LQAJ6UZB2Y3CXY/20221031/us-east-1/sqs/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, Signature=ae84ae35324859b2bf663ac72ea11cd940f7b9c919cf2e310fd2c48cab486925");
+                //ApiQueue.AddHeader("X-Amz-Content-Sha256", "1dfdf25623427d17c755ee27afa1a0ece275d83ba8e601008dc1a5173e657666");
+                //ApiQueue.AddHeader("X-Amz-Date", "20221031T175300Z");
+                //ApiQueue.AddHeader("X-Amz-Security-Token", "IQoJb3JpZ2luX2VjEJH//////////wEaCXVzLWVhc3QtMSJGMEQCIBRinouSS8pejoXQ6bKIC24BuXpT4hqgUz8ZUAVi84IiAiB/NQpjtOM1aPqUCZPLT6M57j5abCuQ1Yemgt6Zxh614yqQAwh5EAAaDDMzNzkyNjcwNTA2NSIM8JGX2zoGN0TNV/RuKu0C/CAA8RcRVp1rr8gNgjruqbAi5BkPtglOd4JYAt/w8mNSNnlSZ+x1dvLQTd+6lWTxlFFmk79NiPnSOmAoTnLcSrZ8CrrnIa849MArsWEPfxwxT0Ew75+QghTBmM857NTFU7+luHGRY5GTv0Zq+HOSINEHgwoqLe/Ky1ygOy/tPbDF1r/wxYzy2sZ5g56z4T9Vplt/CRt6dx3KKg/sPjHBbHTff/kUNk7tOExKlwkNJevP2NfdiJkoX3daIvzgWCrGPqbyaCtDCKkvEgi3OJ8aUMag5n0I3xVlWtXL6gNdZylcT++RZXWav9MKEvYzcXwgUrSjmH1pvGBxlZkUkYw765ozB/7O0hDEVNSkVbLYBepnq4DZQkXxem4X3YSB1KM3K9L9Y2U/dd5YUMQrMa0HNcjYIhMbOEne5YoMA4IEOB7SWceS1z5BBYHkM5nf1PO7rC7p4Ggramjv1a5H/fdO4VNCzah9rwCesJrlg/cwnun/mgY6pwHuqX31PbqMuuc1Bpjyr2RxT0CugzhPIbBJ2lf1VhRYKTxdR0bQ4PatEPiu1rZLlhIETyGBqDl5D7nBBNjN2lzHrxkQiXh43p80L8IhSDIxj/k7MVEp+0peW3P9tuTVO9RQML+JVcjdTMLmgzeiblDj6oGLvxGddRVjG0awkoiqATUoZvQfZ37Nf81YuUaNuSJF3EaWIVMzmFv9nO8Id2lHsbzgMZB46g==");
             }
             ProjectId = GetProjectSettings();
 
@@ -326,15 +318,8 @@ namespace aUI.Automation.Authors
                 MessageGroupId = "2"
             };
 
-            var bodyCount = ASCIIEncoding.ASCII.GetBytes(bodyFormatted);
-            var authCount = ASCIIEncoding.ASCII.GetBytes(Auth);
-            var dIdCount = ASCIIEncoding.ASCII.GetBytes(num.ToString());
-            var urlCount = ASCIIEncoding.ASCII.GetBytes($"{Config.GetConfigSetting("XRayBase")}{Endpts.ImportResults.Api()}");
-            var b = "";
-            var c = bodyCount.Length;
-            b = "";
-
             var rsp = SqsQueue.SendMessageAsync(rq).Result;
+
         }
 
         private void QueueCall(string query)
@@ -764,7 +749,7 @@ namespace aUI.Automation.Authors
             {
                 for (int i = te.RecordedSteps.Count; i > 0; i--)
                 {
-                    if (te.RecordedSteps[i - 1].ImageData != null)
+                    if (te.RecordedSteps[i - 1].ImageData != null && te.RecordedSteps[i - 1].ImageData.Length > 1)
                     {
                         var rand = new RandomTestData();
                         img = te.RecordedSteps[i - 1].ImageData;
