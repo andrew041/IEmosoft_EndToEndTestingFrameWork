@@ -33,6 +33,19 @@ namespace aUI.Automation.HelperObjects
             Client.DefaultRequestHeaders.Accept.Add(
                 new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(appType));
         }
+        
+
+        public Api(TestExecutioner te, HttpClientHandler handler, string baseUrl)
+        {
+            TE = te;
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                baseUrl = Config.GetConfigSetting("ApiUrl", "");
+            }
+
+            Client = new(handler);
+            Client.BaseAddress = new Uri(baseUrl);
+        }
 
         public void SetAuthentication(string authKey, string type = "Bearer")
         {
