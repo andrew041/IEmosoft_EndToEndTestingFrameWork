@@ -24,7 +24,6 @@ namespace aUI.Automation.HelperObjects
 
             return result;
         }
-
         public static void ClickElement(this IWebDriver driver, By by)
         {
             driver.FindElement(by).Click();

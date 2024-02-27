@@ -1,5 +1,6 @@
 ﻿using aUI.Automation.Authors;
 using aUI.Automation.BaseClasses;
+using aUI.Automation.Flutter;
 using aUI.Automation.Interfaces;
 using aUI.Automation.ScreenCaptures;
 using aUI.Automation.Test.IEmosoft.com;
@@ -43,9 +44,11 @@ namespace aUI.Automation.HelperObjects
                 "FIREFOXREMOTE" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.FirefoxRemote),
                 "WINDOWS" => new MobileDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.Windows),
                 "ANDROID" => new MobileDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.Android),
+                "ANDROIDREMOTE" => new MobileDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.AndroidRemote),
                 "IOS" => new MobileDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.IOS),
                 "WPF" => new WindowsWhite(),
-                _ => throw new Exception("Unknown UI driver type in config, expected 'WPF', 'CHROME', 'IE','FIREFOX'"),
+                "FLUTTER" => new MobileDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.Flutter),
+                _ => throw new Exception($"{browserName} is an Unknown UI driver type in config, expected 'WPF', 'CHOME', 'IE','FIREFOX'"),
             };
             if (driver == null)
             {
