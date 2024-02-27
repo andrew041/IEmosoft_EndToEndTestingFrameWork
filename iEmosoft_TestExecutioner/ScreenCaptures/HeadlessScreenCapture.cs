@@ -1,5 +1,6 @@
 ﻿using aUI.Automation.HelperObjects;
 using aUI.Automation.Interfaces;
+using nQuant;
 using OpenQA.Selenium;
 using System;
 using System.Drawing;
@@ -14,7 +15,9 @@ namespace aUI.Automation.ScreenCaptures
         private Screenshot Sc = null;
         private IUIDriver Driver = null;
         private int ImageNum = 0;
-        private Image LastImg;
+        private Bitmap LastImg;
+        private int Height = 0;
+        private int Width = 0;
 
         public HeadlessScreenCapture(string rootPath, IUIDriver driver)
         {
@@ -27,9 +30,11 @@ namespace aUI.Automation.ScreenCaptures
             Sc = null;
             try
             {
+                var size = Driver.RawWebDriver.Manage().Window.Size;
+                Height = size.Height;
+                Width = size.Width;
                 Sc = ((ITakesScreenshot)Driver.RawWebDriver).GetScreenshot();
-                //File.WriteAllBytes(fileName, Sc.AsByteArray);
-                //Sc.SaveAsFile(fileName, ScreenshotImageFormat.Png);
+
                 Bitmap bmp;
                 using (var ms = new MemoryStream(Sc.AsByteArray))
                 {
@@ -40,61 +45,46 @@ namespace aUI.Automation.ScreenCaptures
                 {
                     AddOverlay(textToOverlay, bmp);
                 }
-                //rtn.Save(fileName);
+
                 bmp.Save(fileName);
-                LastImg = (Image)bmp;
+                LastImg = bmp;
 
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
             }
             catch(Exception e)
             {
-                var a = "";
-                //ignore it, do nothing
+                Console.WriteLine("ScrnShot: "+e.Message);
+                Console.WriteLine(e.StackTrace);
             }
         }
 
-        private Image CompressImage(int newWidth, int newHeight, int newQuality)   // set quality to 1-100, eg 50
+        private void GetImg(string text)
         {
-            if (LastImg != null)
+            Sc = null;
+            try
             {
-                using (Image memImage = new Bitmap(LastImg, newWidth, newHeight))
+                var size = Driver.RawWebDriver.Manage().Window.Size;
+                Height = size.Height;
+                Width = size.Width;
+                Sc = ((ITakesScreenshot)Driver.RawWebDriver).GetScreenshot();
+                Bitmap bmp;
+
+                using (var ms = new MemoryStream(Sc.AsByteArray))
                 {
-                    ImageCodecInfo myImageCodecInfo;
-                    System.Drawing.Imaging.Encoder myEncoder;
-                    EncoderParameter myEncoderParameter;
-                    EncoderParameters myEncoderParameters;
-                    myImageCodecInfo = GetEncoderInfo("image/jpeg");
-                    myEncoder = System.Drawing.Imaging.Encoder.Quality;
-                    myEncoderParameters = new EncoderParameters(1);
-                    myEncoderParameter = new EncoderParameter(myEncoder, newQuality);
-                    myEncoderParameters.Param[0] = myEncoderParameter;
-
-                    MemoryStream memStream = new MemoryStream();
-                    memImage.Save(memStream, myImageCodecInfo, myEncoderParameters);
-                    Image newImage = Image.FromStream(memStream);
-                    ImageAttributes imageAttributes = new ImageAttributes();
-                    using (Graphics g = Graphics.FromImage(newImage))
-                    {
-                        g.InterpolationMode =
-                          System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;  //**
-                        g.DrawImage(newImage, new Rectangle(Point.Empty, newImage.Size), 0, 0,
-                          newImage.Width, newImage.Height, GraphicsUnit.Pixel, imageAttributes);
-                    }
-                    return newImage;
+                    bmp = new Bitmap(ms);
                 }
+
+                LastImg = bmp;
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
-            return new Bitmap(1, 1, PixelFormat.DontCare);
-        }
-
-        private static ImageCodecInfo GetEncoderInfo(String mimeType)
-        {
-            ImageCodecInfo[] encoders;
-            encoders = ImageCodecInfo.GetImageEncoders();
-            foreach (ImageCodecInfo ici in encoders)
-                if (ici.MimeType == mimeType) return ici;
-
-            return null;
+            catch (Exception e)
+            {
+                Console.WriteLine("ScrnShot2: " + e.Message);
+                Console.WriteLine(e.StackTrace);
+            }
         }
 
         private void AddOverlay(string text, Bitmap bitmap)
@@ -115,22 +105,27 @@ namespace aUI.Automation.ScreenCaptures
             get {
                 if(LastImg == null)
                 {
-                    return Array.Empty<byte>();
+                    GetImg("");
                 }
                 if (Config.GetConfigSetting("ReportSmallImage", "true").ToLower().Equals("true"))
                 {
-                    var size = Driver.RawWebDriver.Manage().Window.Size;
-                    var h = (int)Math.Floor(size.Height / 3.0);
-                    var w = (int)Math.Floor(size.Width / 3.0);
-                    var rtn = CompressImage(w, h, 100);
-                    byte[] bts;
-
-                    using (var stream = new MemoryStream())
+                    try
                     {
-                        rtn.Save(stream, ImageFormat.Png);
-                        bts = stream.ToArray();
+                        WuQuantizer wuq = new WuQuantizer();
+                        Image img = wuq.QuantizeImage(new Bitmap(LastImg, (int)Math.Floor(Width / 2.0), (int)Math.Floor(Height / 2.0)));
+
+                        byte[] bts = null;
+                        if (img != null)
+                        {
+                            using var stream = new MemoryStream();
+                            img.Save(stream, ImageFormat.Png);
+                            bts = stream.ToArray();
+                        }
+                        return bts;
+                    } catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
                     }
-                    return bts;
                 }
 
                 return Sc.AsByteArray;
