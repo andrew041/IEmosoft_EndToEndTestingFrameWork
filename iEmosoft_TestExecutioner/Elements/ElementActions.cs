@@ -546,7 +546,7 @@ namespace aUI.Automation.Elements
             return desired;
         }
 
-        private By ElementFinder(ElementObject ele)
+        public By ElementFinder(ElementObject ele)
         {
             return ele.EleType switch
             {
