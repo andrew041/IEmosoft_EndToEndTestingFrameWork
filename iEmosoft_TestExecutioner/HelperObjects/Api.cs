@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Text;
 using System.Web;
 
+
 namespace aUI.Automation.HelperObjects
 {
     public class Api : IDisposable
@@ -75,7 +76,8 @@ namespace aUI.Automation.HelperObjects
             if (root.StartsWith('/'))
             {
                 RootEndpt = root;
-            } else
+            }
+            else
             {
                 RootEndpt = $"/{root}";
             }
@@ -85,12 +87,28 @@ namespace aUI.Automation.HelperObjects
         public dynamic GetCall(Enum endpt, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Get", expectedCode);
-            var ept = $"{RootEndpt}{endpt.Api()}{query}";
-            //Console.WriteLine("GET: "+ept);
-            RspMsg = Client.GetAsync(ept).Result;
-            var a = RspMsg.Content.ReadAsStringAsync();
-            //Console.WriteLine("rsp: " + a.Result);
-            if(retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            var uri = $"{RootEndpt}{endpt.Api()}{query}";                       
+            RspMsg = Client.GetAsync(uri).Result;
+
+            if (TE is not null)
+            {
+                var message = "";
+                if (RspMsg.GetRsp() != null)
+                {
+                    message = ((object)RspMsg.GetRsp()).ToString();
+                }
+
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "GET" },
+                    {"URI", uri },
+                    {"Expected Code", $"{expectedCode}" },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response", message }
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
                 TE.Pause(500);
                 return GetCall(endpt, query, expectedCode, false);
@@ -99,46 +117,71 @@ namespace aUI.Automation.HelperObjects
             {
                 AssertResult(expectedCode, RspMsg);
             }
-            //Console.WriteLine(((object)RspMsg.GetRsp()).ToString());
+
             return RspMsg.GetRsp();
         }
 
         //post
-        public dynamic PostCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
+        public dynamic PostCall(Enum endpt, object body, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Post", expectedCode);
+            var uri = $"{RootEndpt}{endpt.Api()}{query}";
             var data = FormatBody(body);
-            RspMsg = Client.PostAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = RspMsg.Content.ReadAsStringAsync().Result;
+            RspMsg = Client.PostAsync(uri, data).Result;
+            var rspBody = RspMsg.Content.ReadAsStringAsync().Result;
 
-            //Console.WriteLine($"URL: {RootEndpt + endpt.Api()}");
-            //Console.WriteLine($"VARS: {vars}");
-            //Console.WriteLine($"Body: {data.ReadAsStringAsync().Result}");
-            //Console.WriteLine("RESULT:");
-            //Console.WriteLine(a);
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "POST" },
+                    {"URI", endpt.Api() + query },
+                    {"Expected Code", ""+expectedCode },
+                    {"Body" , body.ToString() },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response",  RspMsg.Content.ReadAsStringAsync().Result }
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
+
             if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
                 TE.Pause(500);
-                return PostCall(endpt, body, vars, expectedCode, false);
+                return PostCall(endpt, body, query, expectedCode, false);
             }
             if (expectedCode != 0)
             {
                 AssertResult(expectedCode, RspMsg);
             }
+
             return RspMsg.GetRsp();
         }
 
         //put
-        public dynamic PutCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
+        public dynamic PutCall(Enum endpt, object body, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Put", expectedCode);
+            var uri = RootEndpt + endpt.Api() + query;
             var data = FormatBody(body);
-            RspMsg = Client.PutAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = RspMsg.Content.ReadAsStringAsync();
+            RspMsg = Client.PutAsync(uri, data).Result;
+
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "PUT" },
+                    {"URI", uri },
+                    {"Expected Code", $"{expectedCode}" },
+                    {"Body", data.ToString() },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response", RspMsg.Content.ReadAsStringAsync().Result }
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
             if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
                 TE.Pause(500);
-                return PutCall(endpt, body, vars, expectedCode, false);
+                return PutCall(endpt, body, query, expectedCode, false);
             }
             if (expectedCode != 0)
             {
@@ -153,6 +196,17 @@ namespace aUI.Automation.HelperObjects
             StartStep(endpt, "Delete", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
             RspMsg = Client.DeleteAsync(ept).Result;
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "DELETE" },
+                    {"URI", ept },
+                    {"Expected Code", $"{expectedCode}" },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
 
             if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
@@ -170,14 +224,24 @@ namespace aUI.Automation.HelperObjects
         {
             StartStep(endpt, "Delete", expectedCode);
             var ept = $"{RootEndpt}{endpt.Api()}{query}";
-
             var request = new HttpRequestMessage(HttpMethod.Delete, ept)
             {
                 Content = FormatBody(body)
             };
-
             RspMsg = Client.SendAsync(request).Result;
 
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "DELETE" },
+                    {"URI", endpt.Api() + query },
+                    {"Expected Code", ""+expectedCode },
+                    {"Body", FormatBody(body).ToString()},
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
             if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
                 TE.Pause(500);
@@ -187,25 +251,41 @@ namespace aUI.Automation.HelperObjects
             {
                 AssertResult(expectedCode, RspMsg);
             }
+
             return RspMsg.GetRsp();
         }
 
         //patch
-        public dynamic PatchCall(Enum endpt, object body, string vars, int expectedCode = 200, bool retry = true)
+        public dynamic PatchCall(Enum endpt, object body, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Patch", expectedCode);
+            string uri = RootEndpt + endpt.Api() + query;
             var data = FormatBody(body);
-            RspMsg = Client.PatchAsync(RootEndpt + endpt.Api() + vars, data).Result;
-            var a = RspMsg.Content.ReadAsStringAsync();
+            RspMsg = Client.PatchAsync(uri, data).Result;
+
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "PATCH" },
+                    {"URI", uri },
+                    {"Expected Code", $"{expectedCode}" },
+                    {"Body", data.ToString() },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response", RspMsg.Content.ReadAsStringAsync().Result }
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
             if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
             {
                 TE.Pause(500);
-                return PatchCall(endpt, body, vars, expectedCode, false);
+                return PatchCall(endpt, body, query, expectedCode, false);
             }
             if (expectedCode != 0)
             {
                 AssertResult(expectedCode, RspMsg);
             }
+
             return RspMsg.GetRsp();
         }
 
@@ -233,16 +313,13 @@ namespace aUI.Automation.HelperObjects
             {
                 TE.BeginTestCaseStep($"API {type} call to {endpt}", expectedCode.ToString());
 
-                if (DateTime.Now >= TE.TestTimeLimit)
-                {
-                    TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime)} (hh:mm:ss)");
-                }              
+                TE.CheckTestTimeLimit();
             }
         }
 
         public void Dispose()
         {
-            if(Client != null)
+            if (Client != null)
             {
                 Client.Dispose();
             }

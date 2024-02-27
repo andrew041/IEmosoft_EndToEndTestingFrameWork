@@ -1,5 +1,5 @@
 ﻿using NUnit.Framework;
-
+using NUnit.Framework.Constraints;
 namespace aUI.Automation.HelperObjects
 {
     public class AssertHelp
@@ -24,13 +24,38 @@ namespace aUI.Automation.HelperObjects
                 throw;
             }
         }
-
         public void AreNotEqual(object expected, object actual, string step)
         {
             TE.BeginTestCaseStep($"Assert: {step}");
             try
             {
                 Assert.AreNotEqual(expected, actual, step);
+            }
+            catch (AssertionException)
+            {
+                TE.FailCurrentStep(expected.ToString(), actual.ToString());
+                throw;
+            }
+        }
+        public void AreNotSame(object expected, object actual, string step)
+        {
+            TE.BeginTestCaseStep($"Assert: {step}");
+            try
+            {
+                Assert.AreNotSame(expected, actual, step);
+            }
+            catch (AssertionException)
+            {
+                TE.FailCurrentStep(expected.ToString(), actual.ToString());
+                throw;
+            }
+        }
+        public void AreSame(object expected, object actual, string step)
+        {
+            TE.BeginTestCaseStep($"Assert: {step}");
+            try
+            {
+                Assert.AreSame(expected, actual, step);
             }
             catch (AssertionException)
             {
@@ -57,6 +82,8 @@ namespace aUI.Automation.HelperObjects
         {
               True(condition, step);
         }
+
+
 
         public void Fail(string step)
         {
@@ -133,6 +160,19 @@ namespace aUI.Automation.HelperObjects
             try
             {
                 Assert.That(result, step);
+            }
+            catch (AssertionException)
+            {
+                TE.FailCurrentStep("true", "false");
+                throw;
+            }
+        }
+        public void That(dynamic first, IResolveConstraint constraint, string message = "")
+        {
+            TE.BeginTestCaseStep($"Assert: {message}");
+            try
+            {
+                Assert.That(first, constraint, message);
             }
             catch (AssertionException)
             {
