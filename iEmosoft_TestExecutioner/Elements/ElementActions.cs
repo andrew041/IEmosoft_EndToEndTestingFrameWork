@@ -1,12 +1,13 @@
-﻿using aUI.Automation.HelperObjects;
+﻿using aUI.Automation.Flutter;
+using aUI.Automation.HelperObjects;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Appium;
-using OpenQA.Selenium.Appium.Android;
 using OpenQA.Selenium.Interactions;
-using OpenQA.Selenium.Internal;
 using OpenQA.Selenium.Support.UI;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
 using System.Linq;
 
 namespace aUI.Automation.Elements
@@ -45,6 +46,16 @@ namespace aUI.Automation.Elements
 
         //Appium
         AccessabilityId,
+
+        // Flutter specific
+        FlutterAncestor,
+        FlutterText,
+        FlutterDescendant,
+        FlutterSemanticLabel,
+        FlutterTooltipMessage,
+        FlutterType,
+        FlutterValueKey,
+        FlutterPageBack,
     }
 
     public enum Wait
@@ -60,6 +71,7 @@ namespace aUI.Automation.Elements
 
     public class ElementActions
     {
+        private int Counter = 0;
         private TestExecutioner TE;
         private IWebDriver Driver;
         private string MobileMultiMap = Config.GetConfigSetting("MobileEleIdMap", "content-desc");
@@ -87,10 +99,8 @@ namespace aUI.Automation.Elements
 
         public ElementResult ExecuteAction(ElementObject ele, ElementResult starter = null)
         {
-            if(TE.TestTimeLimit < DateTime.Now)
-            {
-                TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime)} (hh:mm:ss)");
-            }
+
+            TE.CheckTestTimeLimit();
 
             var eleName = starter == null ? ele.ElementName : starter.ElementName;
             if (ele.ReportStep)
@@ -117,22 +127,38 @@ namespace aUI.Automation.Elements
                 {
                     element = FindAppiumElement(ele, starter?.RawEle);
                 }
+                else if (IsElementTypeFlutter(ele.EleType))
+                {
+                    ele.Scroll = ele.ScrollableParent is not null; // Only try to scroll if element has a Parent
+                    if (starter is not null)
+                    {
+                        if (starter.RawEle is FlutterElement flutterElement)
+                        {
+                            element = FindFlutterElement(ele, flutterElement);
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("Starter element must be a Flutter Element");
+                        }
+                    }
+                    else
+                    {
+                        element = FindFlutterElement(ele);
+                    }
+                }
                 else
                 {
                     var finder = ElementFinder(ele);
                     element = FindElement(ele, finder, starter?.RawEle);
                 }
             }
-
+            TE.CheckTestTimeLimit();
             return CompleteAction(ele, element);
         }
 
         public List<ElementResult> ExecuteActions(ElementObject ele, ElementResult starter = null)
         {
-            if (TE.TestTimeLimit < DateTime.Now)
-            {
-                TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime).TotalSeconds} seconds");
-            }
+            TE.CheckTestTimeLimit();
 
             var eleName = starter == null ? ele.ElementName : starter.ElementName;
 
@@ -157,21 +183,83 @@ namespace aUI.Automation.Elements
             {
                 elements = FindAppiumElements(ele, starter?.RawEle);
             }
+            else if (IsElementTypeFlutter(ele.EleType))
+            {
+                throw new NotImplementedException("ExecuteActions not supported for flutter elements");
+            }
             else
             {
                 var finder = ElementFinder(ele);
                 elements = FindElements(ele, finder, starter?.RawEle);
             }
             var rtn = new List<ElementResult>();
-            foreach(var element in elements)
+            foreach (var element in elements)
             {
-                if (TE.TestTimeLimit < DateTime.Now)
-                {
-                    TE.Assert.Fail($"Test Exceeded Max Time Limit of: {TE.TestTimeLimit.Subtract(TE.StartTime).TotalSeconds} seconds");
-                }
+                TE.CheckTestTimeLimit();
                 rtn.Add(CompleteAction(ele, element));
             }
             return rtn;
+        }
+
+        private void CircleEle(ElementResult er)
+        {
+            if (Config.GetConfigSetting("TrackCoverage", "false").ToLower().Equals("true"))
+            {
+                var ele = er.RawEle;
+                var baseFolder = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory).Parent.Parent.Parent.Parent.Parent.FullName;
+                var baseFileLoc = Config.GetConfigSetting("CoverageFilePath", "");
+                var url = TE.CurrentFormName_OrURL;
+                url = url.Replace("https://", "").Replace("http://", "");
+                var ind = url.IndexOf('/');
+                url = url.Substring(ind + 1);
+                if (!url.EndsWith('/'))
+                {
+                    url += "/";
+                }
+
+                var lastSection = url.Split('/');
+                if (lastSection.Length > 1)
+                {
+                    var itm = lastSection[^2].Split('?')[0];
+                    var num = int.TryParse(itm, out _);
+                    var uuid = Guid.TryParse(itm, out _);
+                    if (num || uuid)
+                    {
+                        url = url.Replace(lastSection[^2], "{id}");
+                    }
+                }
+
+                var filePath = $"{baseFolder}{baseFileLoc}{url}";
+                var fileName = $"{filePath}{er.ElementName}+{DateTime.Now.Ticks}.png";//ScreenCapture.NewFileName;
+
+                Screenshot sc = null;
+                Counter++;
+                try
+                {
+                    IJavaScriptExecutor jsExecutor = Driver as IJavaScriptExecutor;
+                    jsExecutor.ExecuteScript("arguments[0].setAttribute('style', arguments[1]);", ele, "color: fuchsia; border: 7px solid fuchsia;");
+
+                    sc = ((ITakesScreenshot)Driver).GetScreenshot();
+                    Bitmap bmp;
+                    using (var ms = new MemoryStream(sc.AsByteArray))
+                    {
+                        bmp = new Bitmap(ms);
+                    }
+
+                    if (!Directory.Exists(filePath))
+                    {
+                        Directory.CreateDirectory(filePath);
+                    }
+
+                    bmp.Save(fileName);
+
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+
+                    jsExecutor.ExecuteScript("arguments[0].setAttribute('style', arguments[1]);", ele, "");
+                }
+                catch { }
+            }
         }
 
         private ElementResult CompleteAction(ElementObject eleObj, ElementResult eleRes)
@@ -192,33 +280,35 @@ namespace aUI.Automation.Elements
 
             try
             {
+                var IsFlutter = IsElementTypeFlutter(eleObj.EleType);
                 if (eleObj.Scroll)
                 {
-                    try
+                    
+                    if (IsFlutter)
                     {
-                        rsp.ScrollTo(eleObj.ScrollLoc);
+                        if (eleObj.ScrollableParent is null)
+                        {
+                            throw new InvalidOperationException("The element object is missing a Parent. Cannot scroll.");
+                        }
+                        ((FlutterDriver)Driver).ScrollTo(FlutterFinder(eleObj.ScrollableParent), FlutterFinder(eleObj));
                     }
-                    catch
+                    else
                     {
                         try
                         {
-                            //scroll till element is within the center 50% of the screen??????????? Just not sure how to drag..
-                            //TouchActions action = new TouchActions(Driver);
-
-                            //var visibleText = "Submit";
-                            //((AndroidDriver<IWebElement>)Driver).FindElementByAndroidUIAutomator("new UiScrollable(new UiSelector().scrollable(true).instance(0)).scrollIntoView(new UiSelector().textContains(\"" + visibleText + "\").instance(0))");
-
-                            //TouchActions action = new TouchActions(Driver);
-                            //action.Scroll(ele, 10, 100).Perform();
-                        }
-                        catch (Exception e) { Console.WriteLine(e.Message); }
+                            rsp.ScrollTo(eleObj.ScrollLoc);
+                        } catch { }
                     }
-                    //                    (((IWrapsDriver)ele).WrappedDriver as IJavaScriptExecutor).ScrollToElement(ele);
                 }
-
                 switch (eleObj.Action)
                 {
                     case ElementAction.Click:
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            {"Action Type", "Click" },
+                            {"Element Name", GetElementString(eleObj) },
+                        }, "Element Action");
+                        CircleEle(rsp);
                         ele.Click();
                         break;
                     case ElementAction.Hover:
@@ -227,6 +317,11 @@ namespace aUI.Automation.Elements
                         TE.Pause(150);//default pause for hover to take effect
                         break;
                     case ElementAction.EnterText:
+                        CircleEle(rsp);
+                        if (eleObj.Random)
+                        {
+                            eleObj.Text = TE.Rand.GetRandomString(eleObj.RandomLength);
+                        }
                         if (eleObj.Clear)
                         {
                             ele.Clear();
@@ -235,8 +330,15 @@ namespace aUI.Automation.Elements
                             ele.SendKeys(Keys.Backspace);
                         }
                         ele.SendKeys(eleObj.Text);
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            {"Action Type", "Enter Text" },
+                            {"Element Name", GetElementString(eleObj) },
+                            {"Text", eleObj.Text },
+                        }, "Element Action");
                         break;
                     case ElementAction.Dropdown:
+                        CircleEle(rsp);
                         if (eleObj.Random)
                         {
                             eleObj.Action = ElementAction.DropdownIndex;
@@ -249,6 +351,12 @@ namespace aUI.Automation.Elements
                             select.DeselectAll();
                         }
                         rsp.Text = SetDropdown(select, eleObj.Text);
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            {"Action Type", "Set Dropdown" },
+                            {"Element Name", GetElementString(eleObj) },
+                            {"Selecting",  eleObj.Random ? "Random" : eleObj.Text },
+                        }, "Element Action");
                         break;
                     case ElementAction.GetDropdown:
                         select = new SelectElement(ele);
@@ -264,6 +372,7 @@ namespace aUI.Automation.Elements
                         }
                         break;
                     case ElementAction.DropdownIndex:
+                        CircleEle(rsp);
                         select = new SelectElement(ele);
                         if (select.IsMultiple && eleObj.Clear)
                         {
@@ -281,28 +390,42 @@ namespace aUI.Automation.Elements
                         rsp.Text = select.Options[index].Text;
                         break;
                     case ElementAction.MultiDropdown:
+                        CircleEle(rsp);
                         select = new SelectElement(ele);
                         if (select.IsMultiple && eleObj.Clear)
                         {
                             select.DeselectAll();
                         }
-
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            {"Action Type", "Multidropdown" },
+                            {"Select", $"{eleObj.Text}" },
+                        }, "Element Actions");
                         foreach (var option in eleObj.Text.Split('|'))
                         {
                             SetDropdown(select, option);
                         }
                         break;
                     case ElementAction.RadioBtn:
+                        CircleEle(rsp);
+                        bool clicked = false;
                         if (!eleObj.Text.ToLower().Equals(ele.Selected.ToString().ToLower()))
                         {
                             ele.Click();
+                            clicked = true;
                         }
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            {"Action Type", "Radio Button" },
+                            {"Element Name", GetElementString(eleObj) },
+                            {"Clicked",  $"{clicked}"}
+                        }, "Element Action");
                         break;
                     case ElementAction.GetCheckbox:
                         rsp.Text = ele.Selected.ToString();
                         break;
                     case ElementAction.GetText:
-                        if (ele.TagName.Equals("select"))
+                        if (!IsFlutter && ele.TagName.Equals("select"))
                         {
                             select = new SelectElement(ele);
                             if (select.IsMultiple)
@@ -323,14 +446,29 @@ namespace aUI.Automation.Elements
 
                         if (string.IsNullOrEmpty(rsp.Text))
                         {
-                            rsp.Text = ele.GetAttribute("value");
+                            try
+                            {
+                                rsp.Text = ele.GetAttribute("value");
+                            }
+                            catch (Exception e)
+                            {
+                                //ignore errors, just log
+                                TE.VerboseLog(new Dictionary<string, string> { { "GetText Error", e.ToString() } }, "Element Action");
+                            }
                         }
-
+                        bool found = true;
                         if (rsp.Text == null)
                         {
                             rsp.Text = "";
+                            found = false;
                         }
-
+                        TE.VerboseLog(new Dictionary<string, string>
+                        {
+                            { "Action Type", "Get Text" },
+                            { "Element Name", GetElementString(eleObj) },
+                            { "Result Text", $"{rsp.Text}" },
+                            { "Found", $"{found}" },
+                        }, "Element Action");
                         break;
                     case ElementAction.GetAttribute:
                         rsp.Text = ele.GetAttribute(eleObj.Text);
@@ -342,7 +480,24 @@ namespace aUI.Automation.Elements
                         rsp.Text = ele.GetProperty(eleObj.Text);
                         break;
                     case ElementAction.Wait:
-                        //nothing to do here
+                        //check if wait was successful or not
+                        var rtn = false;
+                        if ((eleObj.WaitType == Wait.Invisible) == (eleRes.RawEle != null))
+                        {
+                            rtn = true;
+                            rsp.Success = false;
+                        }
+                        TE.VerboseLog(new Dictionary<string, string>
+                            {
+                                {"Action Type", "Wait" },
+                                {"Element Name", GetElementString(eleObj) },
+                                {"Wait Type", $"{eleObj.WaitType}" },
+                                {"Max Wait Time", $"{eleObj.MaxWait} seconds" },
+                            }, "Element Action");
+                        if (rtn)
+                        {
+                            return rsp;
+                        }
                         break;
                     default:
                         throw new NotImplementedException("This action has not been implemented. Please implement it.");
@@ -350,15 +505,20 @@ namespace aUI.Automation.Elements
             }
             catch (Exception e)
             {
+                TE.CheckTestTimeLimit();
                 rsp.Exception = e;
                 rsp.Success = false;
                 return rsp;
             }
-
+            TE.CheckTestTimeLimit();
             rsp.Success = true;
             return rsp;
         }
 
+        private string GetElementString(ElementObject ele)
+        {
+            return $"{ele.ElementName} ([{ele.EleType}] {ele.EleRef})";
+        }
         private string SetDropdown(SelectElement select, string desired)
         {
             var optionList = new List<string>();
@@ -386,7 +546,7 @@ namespace aUI.Automation.Elements
             return desired;
         }
 
-        public By ElementFinder(ElementObject ele)
+        private By ElementFinder(ElementObject ele)
         {
             return ele.EleType switch
             {
@@ -460,6 +620,54 @@ namespace aUI.Automation.Elements
 
             return new ElementResult(TE) { Success = false };
         }
+        private FlutterBy FlutterFinder(ElementObject element, ElementObject parent = null)
+        {
+            return element.EleType switch
+            {
+                ElementType.FlutterAncestor => throw new NotImplementedException("Ancestor & descendent don't work yet"),
+                ElementType.FlutterText => FlutterBy.Text(element.EleRef),
+                ElementType.FlutterDescendant => FlutterBy.Descendant(FlutterFinder(element), FlutterFinder(parent)),
+                ElementType.FlutterSemanticLabel => FlutterBy.SemanticsLabel(element.EleRef),
+                ElementType.FlutterTooltipMessage => FlutterBy.TooltipMessage(element.EleRef),
+                ElementType.FlutterType => FlutterBy.Type(element.EleRef),
+                ElementType.FlutterValueKey => FlutterBy.ValueKey(element.EleRef),
+                ElementType.FlutterPageBack => FlutterBy.PageBack(),
+                _ => throw new NotImplementedException("THIS SHOULDNT HAPPEN. Got a none flutter element type")
+            };
+        }
+        private ElementResult FindFlutterElement(ElementObject ele, FlutterElement starter = null)
+        {
+            FlutterElement element = null;
+            var by = FlutterFinder(ele);
+            if (ele.UseChild)
+            {
+                by = FlutterBy.Descendant(FlutterFinder(ele), FlutterFinder(ele.FindFrom));
+            }
+
+            // Scroll if necessary to find element
+            if (ele.Scroll)
+            {
+                ((FlutterDriver)Driver).ScrollTo(FlutterFinder(ele.ScrollableParent), by);
+                ele.Scroll = false; // We no longer need to scroll before performing actions on the element
+            }
+
+            var maxMilliseconds = ele.MaxWait * 1000;
+            var startTime = DateTime.Now;
+            while (DateTime.Now.Subtract(startTime).TotalMilliseconds < maxMilliseconds && element is null)
+            {
+                if (starter == null)
+                {
+                    element = ((FlutterDriver)Driver).FindElement(by);
+                }
+                else
+                {
+                    element = (FlutterElement)starter.FindElement(by);
+                }
+            }
+
+            // Return Success = true if element is not null
+            return new ElementResult(TE) { RawEle = element, Success = element is not null };
+        }
 
         private List<ElementResult> FindAppiumElements(ElementObject ele, IWebElement starter = null)
         {
@@ -532,7 +740,7 @@ namespace aUI.Automation.Elements
 
         private ElementResult FindElement(ElementObject eleRef, By by, IWebElement starter = null)
         {
-            if(eleRef.MaxWait == 0)
+            if (eleRef.MaxWait == 0)
             {
                 try
                 {
@@ -546,7 +754,7 @@ namespace aUI.Automation.Elements
                 {
                     return new ElementResult(TE) { RawEle = null, Success = false };
                 }
-                
+
             }
             var wait = new WebDriverWait(Driver, new TimeSpan(0, 0, eleRef.MaxWait));
             wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(ElementNotVisibleException),
@@ -591,7 +799,7 @@ namespace aUI.Automation.Elements
 
                         };
                     }
-                    catch (Exception e)
+                    catch
                     {
                         return eleRef.WaitType == Wait.Invisible;
                     }
@@ -604,7 +812,21 @@ namespace aUI.Automation.Elements
 
             return new ElementResult(TE) { RawEle = element, Success = sucess };
         }
-
+        public static bool IsElementTypeFlutter(ElementType type)
+        {
+            List<ElementType> flutterTypes = new()
+            {
+                ElementType.FlutterAncestor,
+                ElementType.FlutterText,
+                ElementType.FlutterDescendant,
+                ElementType.FlutterSemanticLabel,
+                ElementType.FlutterTooltipMessage,
+                ElementType.FlutterType,
+                ElementType.FlutterValueKey,
+                ElementType.FlutterPageBack,
+            };
+            return flutterTypes.Contains(type);
+        }
         private List<ElementResult> FindElements(ElementObject eleRef, By by, IWebElement starter = null)
         {
             var retur = new List<ElementResult>();
@@ -733,7 +955,6 @@ namespace aUI.Automation.Elements
         public static void ScrollTo(this ElementResult elementRef, string location = "center")
         {
             IJavaScriptExecutor js = elementRef.TE.RawSeleniumWebDriver_AvoidCallingDirectly as IJavaScriptExecutor;
-
             if (string.IsNullOrEmpty(location))
             {
                 js.ExecuteScript($"arguments[0].scrollIntoView(true);", elementRef.RawEle);
