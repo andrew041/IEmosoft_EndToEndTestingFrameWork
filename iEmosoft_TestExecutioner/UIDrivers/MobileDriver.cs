@@ -1,61 +1,78 @@
-﻿using aUI.Automation.HelperObjects;
+﻿using System;
+using aUI.Automation.Flutter;
+using aUI.Automation.HelperObjects;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Appium;
 using OpenQA.Selenium.Appium.Android;
-using OpenQA.Selenium.Appium.Enums;
 using OpenQA.Selenium.Appium.iOS;
+using OpenQA.Selenium.Appium.Service;
 using OpenQA.Selenium.Appium.Windows;
-using System;
 
 namespace aUI.Automation.UIDrivers
 {
     public class MobileDriver : BrowserDriver
     {
-        readonly BrowserDriverEnumeration BrowserVendor = BrowserDriverEnumeration.Android;
+        private readonly AppiumLocalService Local = null;
+        private readonly BrowserDriverEnumeration BrowserVendor = BrowserDriverEnumeration.Android;
         public MobileDriver(IAutomationConfiguration configuration, BrowserDriverEnumeration browserVendor = BrowserDriverEnumeration.Android) : base(configuration, browserVendor)
         {
             BrowserVendor = browserVendor;
+            var options = ConfigBuilder();
 
-            var ops = new AppiumOptions();
-            ops.AddAdditionalCapability(MobileCapabilityType.DeviceName, Config.GetConfigSetting("AppiumDeviceName", ""));
-            ops.AddAdditionalCapability(MobileCapabilityType.PlatformName, Config.GetConfigSetting("AppiumPlatformName", ""));
-            ops.AddAdditionalCapability(MobileCapabilityType.PlatformVersion, Config.GetConfigSetting("AppiumPlatformVersion", ""));
-            ops.AddAdditionalCapability(MobileCapabilityType.App, Config.GetConfigSetting("AppiumApp", ""));
-            ops.AddAdditionalCapability(MobileCapabilityType.BrowserName, Config.GetConfigSetting("AppiumBrowserName", ""));
-            ops.AddAdditionalCapability(MobileCapabilityType.NewCommandTimeout, "120");//unsure if this is enough/too much
-            ops.AddAdditionalCapability(MobileCapabilityType.Orientation, Config.GetConfigSetting("AppiumOrientation", "PORTRAIT"));
-
-            var uri = Config.GetConfigSetting("AppiumServerUri", "http://127.0.01:4723/wd/hub");
-
-            switch (BrowserVendor)
+            var appiumServer = Config.GetConfigSetting("RemoteServer", "");
+            var local = string.IsNullOrEmpty(appiumServer);
+            if (local)
             {
-                case BrowserDriverEnumeration.Windows:
-                    RawWebDriver = new WindowsDriver<IWebElement>(new Uri(uri), ops);
-                    break;
-                case BrowserDriverEnumeration.Android:
-                    RawWebDriver = new AndroidDriver<IWebElement>(new Uri(uri), ops);
-                    break;
-                case BrowserDriverEnumeration.IOS:
-                    RawWebDriver = new IOSDriver<IWebElement>(new Uri(uri), ops);
-                    break;
+                Local = new AppiumServiceBuilder().UsingAnyFreePort().Build();
+                Local.Start();
+
+                switch (browserVendor)
+                {
+                    case BrowserDriverEnumeration.Windows:
+                        RawWebDriver = new WindowsDriver<IWebElement>(Local, options);
+                        break;
+                    case BrowserDriverEnumeration.Android:
+                        RawWebDriver = new AndroidDriver<IWebElement>(Local, options);
+                        break;
+                    case BrowserDriverEnumeration.IOS:
+                        RawWebDriver = new IOSDriver<IWebElement>(Local, options);
+                        break;
+                }
             }
+            else
+            {
+
+                var uri = new Uri(appiumServer);
+                RawWebDriver = browserVendor switch
+                {
+                    BrowserDriverEnumeration.Windows => new WindowsDriver<IWebElement>(uri, options),
+                    BrowserDriverEnumeration.AndroidRemote => new AndroidDriver<IWebElement>(uri, options),
+                    BrowserDriverEnumeration.IOS => new IOSDriver<IWebElement>(uri, options),
+                    BrowserDriverEnumeration.Flutter => new FlutterDriver(uri, options),
+                    _ => throw new NotSupportedException()
+                };
+            }
+        }
+
+
+
+        private AppiumOptions ConfigBuilder()
+        {
+            var options = new AppiumOptions();
+
+            options.AddAdditionalCapability("appium:appPackage", Config.GetConfigSetting("AppPackage", ""));
+            options.AddAdditionalCapability("appium:appActivity", Config.GetConfigSetting("AppActivity", ""));
+            options.AddAdditionalCapability("appium:deviceName", Config.GetConfigSetting("DeviceName", ""));
+            options.AddAdditionalCapability("appium:automationName", Config.GetConfigSetting("AutomationName", ""));
+            options.AddAdditionalCapability("appium:newCommandTimeout", Config.GetConfigSetting("CommandTimeout", "10"));
+
+            return options;
         }
 
         public override void Dispose()
         {
-            switch (BrowserVendor)
-            {
-                case BrowserDriverEnumeration.Windows:
-                    ((WindowsDriver<IWebElement>)RawWebDriver).CloseApp();
-                    break;
-                case BrowserDriverEnumeration.Android:
-                    ((AndroidDriver<IWebElement>)RawWebDriver).CloseApp();
-                    break;
-                case BrowserDriverEnumeration.IOS:
-                    ((IOSDriver<IWebElement>)RawWebDriver).CloseApp();
-                    break;
-            }
-
+            RawWebDriver.Quit();
+            Local?.Dispose();
             RawWebDriver.Dispose();
         }
     }

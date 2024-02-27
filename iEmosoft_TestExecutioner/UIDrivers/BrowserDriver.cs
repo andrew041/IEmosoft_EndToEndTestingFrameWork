@@ -2,7 +2,6 @@
 using aUI.Automation.Interfaces;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.Edge;
 using OpenQA.Selenium.Firefox;
 using OpenQA.Selenium.IE;
 using OpenQA.Selenium.Remote;
@@ -23,13 +22,12 @@ namespace aUI.Automation.UIDrivers
             Firefox,
             FirefoxRemote,
             IE,
-            IERemote,
-            Edge,
-            EdgeRemote,
+            SauceLabs,
             Windows,
             Android,
+            AndroidRemote,
             IOS,
-            SauceLabs,
+            Flutter
         }
 
         private IWebDriver Browser = null;
@@ -48,67 +46,40 @@ namespace aUI.Automation.UIDrivers
 
             switch (browserVendor)
             {
+                case BrowserDriverEnumeration.Firefox:
+                    var ffService = FirefoxDriverService.CreateDefaultService();
+                    Browser = new FirefoxDriver(ffService);
+                    DriverType = "FireFox";
+                    break;
+
+                case BrowserDriverEnumeration.FirefoxRemote:
+                    var ffRemoteService = new FirefoxOptions();
+                    Browser = new RemoteWebDriver(new Uri(uri), ffRemoteService);
+                    DriverType = "FireFox";
+                    CodePagesEncodingProvider.Instance.GetEncoding(437);
+                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                    ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
+                    break;
                 case BrowserDriverEnumeration.Chrome:
                     var chromeOps = new ChromeOptions();
-                    chromeOps.AddArgument("--start-maximized");
-                    chromeOps.AddArgument("--disable-extensions");
                     Browser = new ChromeDriver("./", chromeOps);
                     DriverType = "Chrome";
                     break;
+
                 case BrowserDriverEnumeration.ChromeRemote:
                     var chromeROps = new ChromeOptions();
-                    chromeROps.AddArgument("--start-maximized");
-                    chromeROps.AddArgument("--disable-extensions");
+                    chromeROps.AddArgument("--disable-dev-shm-usage");
+                    chromeROps.AddArgument("--no-sandbox");
                     Browser = new RemoteWebDriver(new Uri(uri), chromeROps);
                     DriverType = "Chrome";
                     CodePagesEncodingProvider.Instance.GetEncoding(437);
                     Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
                     ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
                     break;
-                case BrowserDriverEnumeration.Firefox:
-                    var ffOps = new FirefoxOptions();
-                    ffOps.AddArgument("--start-maximized");
-                    ffOps.AddArgument("--disable-extensions");
-                    Browser = new FirefoxDriver("./", ffOps);
-                    DriverType = "FireFox";
-                    break;
-                case BrowserDriverEnumeration.FirefoxRemote:
-                    var ffROps = new FirefoxOptions();
-                    ffROps.AddArgument("--start-maximized");
-                    ffROps.AddArgument("--disable-extensions");
-                    Browser = new RemoteWebDriver(new Uri(uri), ffROps);
-                    DriverType = "FireFox";
-                    CodePagesEncodingProvider.Instance.GetEncoding(437);
-                    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-                    ((RemoteWebDriver)Browser).FileDetector = new LocalFileDetector();
-                    break;
                 case BrowserDriverEnumeration.IE:
-                    var ieOps = new InternetExplorerOptions();
-                    //ieOps.AddAdditionalCapability("--start-maximized");
-                    //ieOps.AddAdditionalCapability("--disable-extensions");
-                    Browser = new InternetExplorerDriver(ieOps);
+                    var ieOptions = new InternetExplorerOptions();
+                    Browser = new InternetExplorerDriver(ieOptions);
                     DriverType = "IE";
-                    break;
-                case BrowserDriverEnumeration.IERemote:
-                    var ieROps = new InternetExplorerOptions();
-                    //ieROps.AddAdditionalCapability("--start-maximized");
-                    //ieROps.AddAdditionalCapability("--disable-extensions");
-                    Browser = new RemoteWebDriver(new Uri(uri), ieROps);
-                    DriverType = "IE";
-                    break;
-                case BrowserDriverEnumeration.Edge:
-                    var edgeOps = new EdgeOptions();
-                    //edgeOps.AddAdditionalCapability("--start-maximized");
-                    //edgeOps.AddAdditionalCapability("--disable-extensions");
-                    Browser = new EdgeDriver(edgeOps);
-                    DriverType = "Edge";
-                    break;
-                case BrowserDriverEnumeration.EdgeRemote:
-                    var edgeROps = new EdgeOptions();
-                    //edgeROps.AddAdditionalCapability("--start-maximized");
-                    //edgeROps.AddAdditionalCapability("--disable-extensions");
-                    Browser = new RemoteWebDriver(new Uri(uri), edgeROps);
-                    DriverType = "Edge";
                     break;
                 case BrowserDriverEnumeration.SauceLabs:
                     var capabilities = GetDesiredCapabilities(configuration);

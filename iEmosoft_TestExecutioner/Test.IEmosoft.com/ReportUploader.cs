@@ -149,7 +149,7 @@ namespace aUI.Automation.Test.IEmosoft.com
             return localReportFiles.Count > 0;
         }
 
-        [Obsolete("No longer used")]
+        // TODO: This was marked obselete before, this FTP uploader needs refactoring
         private string ConnectToServer(bool navToScreenCapture = false)
         {
             CurrentRemoteDirectory = string.Format("{0}/{1}/{2}", ApplicationId, TestName, SessionKey);
@@ -167,7 +167,7 @@ namespace aUI.Automation.Test.IEmosoft.com
             return CurrentRemoteDirectory;
         }
 
-        [Obsolete("No longer used")]
+        // TODO: This was marked obselete before, this FTP uploader needs refactoring
         private void DisposeFTPConnection()
         {
             /*
@@ -188,7 +188,7 @@ namespace aUI.Automation.Test.IEmosoft.com
             */
         }
 
-        [Obsolete("No longer used")]
+        // TODO: This was marked obselete before, this FTP uploader needs refactoring
         private string UploadFile(string file)
         {
             string remotePath = CurrentRemoteDirectory + "/" + Path.GetFileName(file);

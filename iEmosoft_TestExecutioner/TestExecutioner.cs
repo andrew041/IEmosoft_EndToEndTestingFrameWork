@@ -16,6 +16,12 @@ using iTextSharp.text.pdf;
 using iTextSharp.text.pdf.parser;
 using System.Text;
 using System.Net;
+using System.Runtime.CompilerServices;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using System.Net.Http;
+using aUI.Automation.UIDrivers;
 
 namespace aUI.Automation
 {
@@ -26,6 +32,8 @@ namespace aUI.Automation
         public BaseAuthor TestAuthor = null;
         private bool ReportingEnabled = true;
         private bool TestPassed = true;
+        public bool VerboseLogging { get; set; }
+        public bool UseRelativeTiming { get; set; }
         public DateTime StartTime { get; private set; }
         public DateTime TestTimeLimit { get; set; } = DateTime.Now.AddHours(12);
         public DateTime? DisposeTime { get; private set; } = null;
@@ -68,6 +76,7 @@ namespace aUI.Automation
 
         public TestExecutioner(TestCaseHeaderData testCaseHeader, bool apiTest)
         {
+            StartTime = DateTime.Now;
             if (apiTest)
             {
                 //TODO Modify Dispose to deal with null test author
@@ -80,17 +89,22 @@ namespace aUI.Automation
 
                 TestAuthor = factory.CreateAuthor();
                 TestAuthor.StartNewTestCase(testCaseHeader);
-
-                StartTime = DateTime.Now;
             }
             else
             {
                 Initialize(testCaseHeader, null, null, null);
             }
 
+            string useVerboseStr = Config.GetConfigSetting("UseVerboseLogging", "false");
+            bool.TryParse(useVerboseStr, out var useVerboseLogging);
+            string useRelativeTimingStr = Config.GetConfigSetting("UseRelativeTiming", "false");
+            bool.TryParse(useRelativeTimingStr, out var useRelativeTiming);
+
+            VerboseLogging = useVerboseLogging;
+            UseRelativeTiming = useRelativeTiming;
             SetDefaultMaxTime();
             Assert = new AssertHelp(this);
-            
+
             if (!apiTest)
             {
                 Action = new ElementActions(this);
@@ -135,6 +149,14 @@ namespace aUI.Automation
             }
         }
 
+        public void CheckTestTimeLimit()
+        {
+            if (TestTimeLimit < DateTime.Now)
+            {
+                Assert.Fail($"Test Exceeded Max Time Limit of: {TestTimeLimit.Subtract(StartTime).TotalSeconds} seconds");
+            }
+        }
+
         public PoolState PoolState
         {
             get
@@ -165,7 +187,15 @@ namespace aUI.Automation
         {
             var factory = new AutomationFactory();
 
-            UiDriver = injectedDriver ?? factory.CreateUIDriver();
+            try
+            {
+                UiDriver = injectedDriver ?? factory.CreateUIDriver();
+            }
+            catch
+            {
+                Pause(750);
+                UiDriver = injectedDriver ?? factory.CreateUIDriver();
+            }
 
             if (testCaseHeader != null)
             {
@@ -251,7 +281,7 @@ namespace aUI.Automation
             var start = DateTime.Now;
             var done = false;
 
-            while(!done && DateTime.Now.Subtract(start).TotalSeconds < wait)
+            while (!done && DateTime.Now.Subtract(start).TotalSeconds < wait)
             {
                 try
                 {
@@ -385,7 +415,8 @@ namespace aUI.Automation
 
         public bool TestCaseFailed
         {
-            get {
+            get
+            {
                 var initialStatus = TestAuthor != null ? TestAuthor.TestCaseFailed : false;
                 var nunit = TestContext.CurrentContext.Result.FailCount > 0;
                 var nothing = TestAuthor.RecordedSteps.Count == 0;
@@ -395,7 +426,8 @@ namespace aUI.Automation
 
         public string TestStackTrace
         {
-            get {
+            get
+            {
                 return TestContext.CurrentContext.Result.StackTrace;
             }
         }
@@ -428,13 +460,14 @@ namespace aUI.Automation
                 {
                     currentStep.ExpectedResult = expectedResult;
                 }
-
                 if (!actualResult.isNull())
                 {
                     currentStep.ActualResult = actualResult;
                 }
-
-                CaptureScreen(actualResult);
+                if (UiDriver is not MobileDriver)
+                {
+                    CaptureScreen(actualResult);
+                }
             }
 
             if (isShowStoppingError)
@@ -446,7 +479,7 @@ namespace aUI.Automation
 
         public void BeginTestCaseStep(string stepDescription, string expectedResult = "", string suppliedData = "", bool captureImage = false)
         {
-            stepDescription = stepDescription.Replace(Environment.NewLine, "").Replace("\"","");
+            stepDescription = stepDescription.Replace(Environment.NewLine, "").Replace("\"", "");
             if (TestAuthor != null)
             {
                 TestAuthor.BeginTestCaseStep(stepDescription, expectedResult, suppliedData);
@@ -466,6 +499,15 @@ namespace aUI.Automation
         public void DisassociateBug(string bugNumber)
         {
             TestAuthor.DisassociateBug(bugNumber);
+        }
+
+        public void AddTestComment(string comment)
+        {
+            TestAuthor.AddTestComment(comment);
+            VerboseLog(new Dictionary<string, string>()
+            {
+                {"Content", comment}
+            }, "Test Comment");
         }
 
         public TestCaseStep CurrentStep
@@ -530,7 +572,7 @@ namespace aUI.Automation
                 CallRestService(ftpReportPath);
             }
 
-            ProcessTestResultCalled = true;
+            // ProcessTestResultCalled = true;
             return reportFile;
         }
 
@@ -600,15 +642,16 @@ namespace aUI.Automation
         {
             bool result = false;
 
-            for (int i = 0; i <= (waitSeconds * 2); i++)
+            for (int i = 0; i <= (waitSeconds * 4); i++)
             {
-                if ((CurrentFormName_OrURL.ToLower().Contains(urlSnippet.ToLower()) && !endsWith) || (endsWith && CurrentFormName_OrURL.ToLower().EndsWith(urlSnippet.ToLower())))
+                var url = CurrentFormName_OrURL.ToLower();
+                if ((url.Contains(urlSnippet.ToLower()) && !endsWith) || (endsWith && url.EndsWith(urlSnippet.ToLower())))
                 {
                     result = true;
                     break;
                 }
 
-                Pause(500);
+                Pause(250);
             }
 
             return result;
@@ -720,7 +763,7 @@ namespace aUI.Automation
         public void SwitchWindows(bool first = true)
         {
             var window = RawSeleniumWebDriver_AvoidCallingDirectly.WindowHandles[^1];
-            
+
             if (first)
             {
                 window = RawSeleniumWebDriver_AvoidCallingDirectly.WindowHandles[0];
@@ -757,7 +800,7 @@ namespace aUI.Automation
                 }
 
                 StartTime = DateTime.Now;
-                ProcessTestResultCalled = false;
+                // ProcessTestResultCalled = false;
             }
         }
 
@@ -808,6 +851,62 @@ namespace aUI.Automation
             return ngModelValue;
         }
 
+        public void WithVerboseLogging(Action functionToRun)
+        {
+            VerboseLogging = true;
+            functionToRun();
+            VerboseLogging = false;
+        }
+
+        public void VerboseLog(Dictionary<string, string> data, string title = "")
+        {
+            if (!VerboseLogging) { return; }
+            // Print time and title
+            // TODO: Add elapsed time since program start config option
+            var time = DateTime.Now.ToString("HH:mm:ss.fff");
+            if (UseRelativeTiming)
+            {
+                var elapsed = DateTime.Now - StartTime;
+                time = elapsed.ToString("hh':'mm':'ss'.'fff");
+            }
+            Console.WriteLine($"[{time}{(title != "" ? " " + title : "")}]:");
+            string separator = ":";
+            int longestKey = new List<string>(data.Keys).Aggregate(0, (max, current) =>
+            {
+                return max < current.Length ? current.Length : max;
+            }) + separator.Length;
+            // Print keys
+            foreach (var item in data)
+            {
+                Console.WriteLine("\t" + (item.Key + ":").PadRight(longestKey) + "\t" + item.Value);
+            }
+            // Print stack trace
+            var stackFrames = new List<StackFrame>(new StackTrace(true).GetFrames());
+            // TODO: Maybe move stack frame size to a config variable
+            var relevantFrames = stackFrames.GetRange(1, 3);
+            bool omittedFramesFromStart = false;
+            bool omittedFramesFromEnd = true;
+            if (title.Equals("Element Action"))
+            {
+                relevantFrames = stackFrames.GetRange(3, 3);
+                omittedFramesFromStart = true;
+            }
+            Console.WriteLine("Stack trace:");
+            if (omittedFramesFromStart)
+            {
+                Console.WriteLine("\t...");
+            }
+            foreach (var frame in relevantFrames)
+            {
+                Console.WriteLine($"\t{frame.GetFileName()}:{frame.GetFileLineNumber()}");
+            }
+            if (omittedFramesFromEnd)
+            {
+                Console.WriteLine("\t...");
+            }
+            Console.WriteLine("");
+        }
+
         public Exception FailTest(Exception exp)
         {
             BeginTestCaseStep("An expected error occurred", "", "");
@@ -843,7 +942,7 @@ namespace aUI.Automation
         {
             ele.Action = ElementAction.Wait;
             var temp = Action.ExecuteAction(ele);
-            
+
             try
             {
                 temp.RawEle.SendKeys(ele.Text);
@@ -1036,6 +1135,18 @@ namespace aUI.Automation
             var obj = new ElementObject(ele) { Action = ElementAction.Wait, WaitType = wait, MaxWait = maxWait };
             return Action.ExecuteAction(obj);
         }
+
+        public ElementResult ScrollTo(Enum ele, string loc = "start", int maxWait = 10)
+        {
+            var obj = new ElementObject(ele) { Action = ElementAction.Wait, WaitType = Wait.Presence, MaxWait = maxWait };
+            var act = Action.ExecuteAction(obj);
+            if (act.Success)
+            {
+                act.ScrollTo(loc);
+                Pause(200);
+            }
+            return act;
+        }
         #endregion
 
         #region Multi's
@@ -1189,7 +1300,7 @@ namespace aUI.Automation
         public (List<ElementResult> header, List<List<ElementResult>> body) ReadTable(Enum tableRef, bool scroll = false, ElementResult start = null)
         {
             var table = WaitFor(tableRef);
-            if(start != null)
+            if (start != null)
             {
                 table = start.WaitFor(tableRef);
             }
@@ -1216,7 +1327,7 @@ namespace aUI.Automation
 
             var index = headers.FindIndex(x => x.Text.ToLower().Equals(header.ToLower()));
 
-            if(index < 0)
+            if (index < 0)
             {
                 return (null, null);
             }
@@ -1236,7 +1347,7 @@ namespace aUI.Automation
 
         public List<ElementResult> ReadEmbeddedPDF(Enum embedRef)
         {
-            return ReadEmbeddedPDF(new ElementObject(embedRef) { WaitType = Wait.Visible});
+            return ReadEmbeddedPDF(new ElementObject(embedRef) { WaitType = Wait.Visible });
         }
         public List<ElementResult> ReadEmbeddedPDF(ElementType eType, string eRef)
         {
@@ -1253,9 +1364,9 @@ namespace aUI.Automation
         {
             List<string> pages = new();
 
-            using (var client = new WebClient())
+            using (var client = new HttpClient())
             {
-                var data = client.DownloadData(url);
+                var data = client.GetByteArrayAsync(url).Result;
                 using (PdfReader reader = new PdfReader(data))
                 {
                     for (int page = 1; page <= reader.NumberOfPages; page++)
@@ -1272,9 +1383,9 @@ namespace aUI.Automation
         public List<String> ReadDownloadedPDF(string filepath)
         {
             List<string> pages = new();
-            using(PdfReader reader = new PdfReader(filepath))
+            using (PdfReader reader = new PdfReader(filepath))
             {
-                for(int page = 1; page <= reader.NumberOfPages; page++)
+                for (int page = 1; page <= reader.NumberOfPages; page++)
                 {
                     SimpleTextExtractionStrategy strat = new();
                     string text = PdfTextExtractor.GetTextFromPage(reader, page, strat);
@@ -1344,6 +1455,17 @@ namespace aUI.Automation
             catch { }
         }
 
+        public void AddLocalStorage(string tokenName, string tokenValue)
+        {
+            try
+            {
+                RawSeleniumWebDriver_AvoidCallingDirectly.ExecuteScript($"localStorage.setItem('{tokenName}', '{tokenValue}');");
+            }
+            catch
+            {
+                Console.WriteLine("Failed to insert token into local storage");
+            }
+        }
         public void Dispose()
         {
             try
