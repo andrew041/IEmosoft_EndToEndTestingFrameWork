@@ -131,7 +131,6 @@ namespace aUI.Automation.Authors
         public string Name;
         public dynamic TestData;
         public List<dynamic> StepData;
-        public List<dynamic> NewStepData;
 
         public int CheckStepDiff(List<List<TestCaseStep>> testSteps)
         {

@@ -12,6 +12,7 @@ namespace aUI.Automation.BaseClasses
 
         public List<TestCaseStep> RecordedSteps { get; private set; } = new();
         public TestCaseHeaderData TestCaseHeader { get; private set; }
+        public string TestComments { get; private set; }
 
         public List<string> ReportedBugs { get; private set; } = new(); 
         protected string TestCaseTemplatePath;
@@ -69,6 +70,18 @@ namespace aUI.Automation.BaseClasses
             if (index != -1)
             {
                 ReportedBugs.RemoveAt(index);
+            }
+        }
+
+        public void AddTestComment(string comment)
+        {
+            if (!string.IsNullOrEmpty(TestComments))
+            {
+                TestComments += $"{Environment.NewLine}{comment}";
+            }
+            else
+            {
+                TestComments = comment;
             }
         }
 

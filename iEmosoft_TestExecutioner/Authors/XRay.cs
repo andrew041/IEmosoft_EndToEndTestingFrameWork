@@ -10,6 +10,9 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
+using System.Text.RegularExpressions;
+using System.IO;
+using System.Runtime.InteropServices;
 
 namespace aUI.Automation.Authors
 {
@@ -32,7 +35,7 @@ namespace aUI.Automation.Authors
          * XRayTestFolder
          */
 
-        int MinuteThreshold = 40;
+        int MinuteThreshold = 20;
         int ApiWaitTime = 0;
         private int EditTestThreshold = 150;
         string Project = Config.GetConfigSetting("XRayProject");
@@ -49,10 +52,11 @@ namespace aUI.Automation.Authors
         private object Lock2;
         List<string> TestEnvs = new List<string>();
         List<string> Folders = new List<string>();
+        List<string> SubFolders = new List<string>();
         string ProjectId = "";
         Api ApiObj;
         Api ApiQueue;
-        int TestGroups = 3;
+        // int TestGroups = 3;
         IAmazonSQS SqsQueue;
 
         List<XRayTest> Tests = new List<XRayTest>();
@@ -134,7 +138,7 @@ namespace aUI.Automation.Authors
             ApiObj.SetAuthentication(Auth);
             if (!string.IsNullOrEmpty(Queue))
             {
-                TestGroups = 1;
+                // TestGroups = 1;
                 SqsQueue = new AmazonSQSClient();
                 ApiQueue = new Api(null, Config.GetConfigSetting("XRayQueueBase"), "application/x-www-form-urlencoded");
                 //ApiQueue.SetAuthentication("Credential=ASIAU5LQAJ6UZB2Y3CXY/20221031/us-east-1/sqs/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-amz-security-token, Signature=c4a623ac659ad91cd6c10c00e9f91e8f9dfc402800942a9e2073b4b4438a489a", "AWS4-HMAC-SHA256");
@@ -154,8 +158,26 @@ namespace aUI.Automation.Authors
             GetAllTestCases();
         }
         #region Public methods
-        public void CreateTestRun(List<string> testCases = null)
+        public void CreateTestRun(List<string> testCases = null, bool alwaysNew = false)
         {
+            if (!alwaysNew)
+            {
+                //get global key and time
+                var setKey = Config.GetConfigSetting("PriorExecutionKey");
+                var setKeyTime = Config.GetConfigSetting("PriorExecutionKeyTime");
+                if (!string.IsNullOrEmpty(setKey) && !string.IsNullOrEmpty(setKeyTime))
+                {
+                    if(DateTime.TryParse(setKeyTime, out DateTime dt))
+                    {
+                        if (DateTime.Now.Subtract(dt).Minutes < 120)
+                        {
+                            ExecutionKey = setKey;
+                            return;
+                        }
+                    }
+                }
+            }
+
             if (testCases == null)
             {
                 testCases = new List<string>();
@@ -180,7 +202,7 @@ namespace aUI.Automation.Authors
 
             ExecutionName += time;
 
-            var cases = string.Join(", ", testCases.Select(x => string.Format("\"{0}\"", x)));
+            var cases = "";//string.Join(", ", testCases.Select(x => string.Format("\"{0}\"", x)));
             var query = "mutation {createTestExecution(testIssueIds: [" + cases + "] testEnvironments: [\"" + Env + "\"] jira: {fields: { summary: \"" + ExecutionName + "\", project: {key: \"" + Project + "\"} }}) {testExecution {issueId jira(fields: [\"key\"])} warnings createdTestEnvironments}}";
 
             dynamic rsp;
@@ -193,6 +215,16 @@ namespace aUI.Automation.Authors
 
             ExecutionKey = (string)rsp.data.createTestExecution.testExecution.jira.key;
             ExecutionId = (string)rsp.data.createTestExecution.testExecution.issueId;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                var filename = Directory.GetParent(Directory.GetCurrentDirectory()).Parent.Parent.FullName + "/appsettings.json";
+
+                var allLines = File.ReadAllLines(filename).ToList();
+                allLines.Insert(5, $"\"PriorExecutionKey\":\"{ExecutionKey}\",");
+                allLines.Insert(5, $"\"PriorExecutionKeyTime\":\"{DateTime.Now.ToString("MM/dd/yyyy HH:mm:ss")}\",");
+                File.WriteAllLines(filename, allLines.ToArray());
+            }
         }
 
         private bool IsCST()
@@ -390,6 +422,21 @@ namespace aUI.Automation.Authors
                 if (path.Contains(TestFolder))
                 {
                     TestFolder = path;
+
+                    query = "query {getFolder(projectId: \"" + projectId + "\", path: \"" + path + "\") {path folders}}";
+                    lock (Locker)
+                    {
+                        Wait();
+                    }
+
+                    var rspSub = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                    CheckCall(rspSub);
+
+                    foreach (var subFolder in ApiHelper.GetRspList(rspSub.data.getFolder.folders))
+                    {
+                        var subPath = (string)subFolder.path;
+                        SubFolders.Add(subPath);
+                    }
                 }
                 else if (path.Contains(RetiredFolder))
                 {
@@ -402,6 +449,12 @@ namespace aUI.Automation.Authors
 
         private void GetAllTestCases()
         {
+            GetTestsInFolder(TestFolder);
+            SubFolders.ForEach(x => GetTestsInFolder(x));
+        }
+
+        private void GetTestsInFolder(string folder)
+        {
             var testReturnLimit = 100;
             var start = -testReturnLimit;
 
@@ -411,10 +464,9 @@ namespace aUI.Automation.Authors
                 start += testReturnLimit;
                 //TODO Update query to get the test name back
 
-                var folder = TestFolder.Contains("/") ? " folder: {path: \"" + TestFolder + "\"}" : "";
+                var folderVal = TestFolder.Contains("/") ? " folder: {path: \"" + folder + "\"}" : "";
 
-                var query = "query { getTests(projectId: \"" + ProjectId + "\" limit: " + testReturnLimit + " start: " + start + folder + ") {total results { issueId projectId testType {name} steps {id action data result} jira(fields: [\"summary\", \"key\"])}}}";
-
+                var query = "query { getTests(projectId: \"" + ProjectId + "\" limit: " + testReturnLimit + " start: " + start + folderVal + ") {total results { issueId projectId folder {path} testType {name} steps {id action data result} jira(fields: [\"summary\", \"key\"])}}}";
 
                 dynamic rsp;
                 lock (Locker)
@@ -436,7 +488,7 @@ namespace aUI.Automation.Authors
             } while (start < totalCount && totalCount < 5000);
         }
 
-        private void UpdateTestCase(string testName, XRayTest test, List<TestCaseStep> testSteps)
+        private void UpdateTestCase(string testName, XRayTest test, List<TestCaseStep> testSteps, string family)
         {
             //check diff count
             var diff = test.StepDiff(testSteps);
@@ -445,19 +497,41 @@ namespace aUI.Automation.Authors
             {
                 RemoveTestFromTestRun(test.IssueId);
                 MoveTestCase(test.IssueId, RetiredFolder);
-                CreateTestCase(testName, testSteps);
+                CreateTestCase(testName, testSteps, family);
             }
             else if (diff > 5)
             {
                 var mutations = new List<string>();
-                var removeItems = true;
+                // var removeItems = true;
                 int index;
+
+                //check on updating folder
+                var r = new Regex(@"
+                (?<=[A-Z])(?=[A-Z][a-z]) |
+                 (?<=[^A-Z])(?=[A-Z]) |
+                 (?<=[A-Za-z])(?=[^A-Za-z])", RegexOptions.IgnorePatternWhitespace);
+
+                var familyWithSpace = r.Replace(family, " ");
+
+                //check proper folder path exists, if not, create it
+                var folderPath = TestFolder;
+                if (!string.IsNullOrEmpty(familyWithSpace))
+                {
+                    folderPath += $"/{familyWithSpace}";
+                }
+
+                if (!test.Path.Equals(folderPath))
+                {
+                    CreateFolder(folderPath);
+                    mutations.Add("addTestsToFolder(projectId: \"" + ProjectId + "\", path: \"" + folderPath + "\", testIssueIds:[\"" + (string)test.IssueId + "\"]) {folder {path}}");
+                }
+
                 for (index = 0; index < testSteps.Count; index++)
                 {
                     //if testSteps is out of range, break
                     if (index >= test.Steps.Count)
                     {
-                        removeItems = false;
+                        // removeItems = false;
                         break;
                     }
                     else if (!((string)test.Steps[index].action).Equals(testSteps[index].StepDescription.Replace("\\", "-")))
@@ -536,6 +610,7 @@ namespace aUI.Automation.Authors
 
         private XRayTest FindTestCase(string testName, TestExecutioner te)
         {
+            var family = te.TestAuthor.TestCaseHeader.TestFamily;
             var testSteps = te.RecordedSteps;
             bool hasTest = Tests.Any(x => x.Name.ToLower().Trim().Equals(testName.ToLower().Trim()));
 
@@ -545,29 +620,44 @@ namespace aUI.Automation.Authors
 
                 if (!te.TestCaseFailed)
                 {
-                    UpdateTestCase(testName, test, testSteps);
+                    UpdateTestCase(testName, test, testSteps, family);
                 }
 
                 return test;
             }
             else
             {
-                return CreateTestCase(testName, testSteps);
+                return CreateTestCase(testName, testSteps, family);
             }
         }
 
-        private XRayTest CreateTestCase(string testName, List<TestCaseStep> testSteps)
+        private XRayTest CreateTestCase(string testName, List<TestCaseStep> testSteps, string family)
         {
             //Potentially use the 'import' instead of this as it may be much quicker
             GenerateTestSteps(testSteps, out var steps);
 
-            var folder = string.IsNullOrEmpty(TestFolder) ? "" : "folderPath: \"" + TestFolder + "\"";
+            var r = new Regex(@"
+                (?<=[A-Z])(?=[A-Z][a-z]) |
+                 (?<=[^A-Z])(?=[A-Z]) |
+                 (?<=[A-Za-z])(?=[^A-Za-z])", RegexOptions.IgnorePatternWhitespace);
+
+            var familyWithSpace = r.Replace(family, " ");
+
+            //check proper folder path exists, if not, create it
+            var folderPath = TestFolder;
+            if (!string.IsNullOrEmpty(familyWithSpace))
+            {
+                folderPath += $"/{familyWithSpace}";
+                CreateFolder(folderPath);
+            }
+
+            var folder = string.IsNullOrEmpty(folderPath) ? "" : "folderPath: \"" + folderPath + "\"";
 
             var query = "mutation {createTest(testType: { name: \"Automated\" }steps: "
                 //+"[{action: \"Create first example step\", result: \"First step was created\"},{action: \"Create second example step with data\", data: \"Data for the step\", result: \"Second step was created with data\" }]"
                 + steps
                 + " jira: {fields: { summary:\"" +
-                testName.Trim() + "\", project: {key: \"" + Project + "\"} }}" + folder + ") {test {issueId testType {name} steps {id action data result} jira(fields: [\"key\", \"summary\"])} warnings}}";
+                testName.Trim() + "\", description:\"" + familyWithSpace.Trim() + "\" project: {key: \"" + Project + "\"} }}" + folder + ") {test {issueId testType {name} steps {id action data result} jira(fields: [\"key\", \"summary\"])} warnings}}";
 
             query = query.Replace("\n", " ").Replace("\r", " ");
 
@@ -583,6 +673,21 @@ namespace aUI.Automation.Authors
 
             Tests.Add(test);
             return test;
+        }
+
+        private void CreateFolder(string folderPath)
+        {
+            if (!SubFolders.Contains(folderPath))
+            {
+                var query = "mutation {createFolder (projectId: \"" + ProjectId + "\", path: \"" + folderPath + "\") {folder {name path}}}";
+                dynamic rsp;
+                lock (Locker)
+                {
+                    Wait();
+                }
+                rsp = ApiObj.PostCall(Endpts.Graph, new { query }, "", 0);
+                CheckCall(rsp);
+            }
         }
 
         private void MoveTestCase(string testId, string folder)
@@ -719,7 +824,10 @@ namespace aUI.Automation.Authors
 
                 comment += Environment.NewLine + "*StackTrace:*" + Environment.NewLine + te.TestStackTrace;
             }
-
+            if (!string.IsNullOrEmpty(te.TestAuthor.TestComments))
+            {
+                comment += Environment.NewLine + "*Comments:*" + Environment.NewLine + te.TestAuthor.TestComments;
+            }
             var info = new
             {
                 finishDate = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ssK"),
@@ -916,6 +1024,7 @@ namespace aUI.Automation.Authors
         public string IssueKey { get { return (string)RawData.jira.key; } }
         public List<dynamic> Steps;
         public string Name { get { return (string)RawData.jira.summary; } }
+        public string Path { get { return (string)RawData.folder.path; } }
         public XRayTest(dynamic data)
         {
             RawData = data;

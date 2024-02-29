@@ -29,7 +29,7 @@ namespace aUI.Automation.HelperObjects
         public string GetRandomString(int length, bool spaces = false)
         {
             var ops = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-            if(spaces)
+            if (spaces)
             {
                 ops += " ";
             }
@@ -56,7 +56,7 @@ namespace aUI.Automation.HelperObjects
 
             for (int i = 0; i < stringChars.Length; i++)
             {
-                stringChars[i] = ops[Rnd.Next(0,ops.Length)];
+                stringChars[i] = ops[Rnd.Next(0, ops.Length)];
             }
 
             return new string(stringChars);
@@ -101,7 +101,7 @@ namespace aUI.Automation.HelperObjects
 
             return "";
         }
-        
+
         public string GetRandomVIN()
         {
 
@@ -411,7 +411,6 @@ namespace aUI.Automation.HelperObjects
     public class Randomizer
     {
         private Random rnd;
-        private int rndUseageCounter = 0;
 
         public Randomizer()
         {
@@ -435,5 +434,12 @@ namespace aUI.Automation.HelperObjects
             int seed = DateTime.Now.Millisecond * DateTime.Now.Second;
             rnd = new Random(seed);
         }
+    }
+
+    public static class ListRandomExtension {
+        public static T Random<T>(this List<T> list)
+        {
+            return list[new Random().Next(0, list.Count)];
+        } 
     }
 }

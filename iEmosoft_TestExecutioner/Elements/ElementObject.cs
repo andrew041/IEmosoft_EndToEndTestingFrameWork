@@ -27,6 +27,10 @@ namespace aUI.Automation.Elements
 
         public string ElementName = "";
 
+        public bool UseChild;
+        public ElementObject FindFrom;  // Represents a parent element if using descendant, or child element if using ancestor
+        public ElementObject ScrollableParent;
+
         /// <summary>
         /// Option to replace parts of a preset enum with runtime values.
         /// Key - what to replace
@@ -57,25 +61,35 @@ namespace aUI.Automation.Elements
             ElementName = eleRef.ToString();
             Text = desiredText;
             ExpectedValue = desiredText;
+            ScrollableParent = eleRef.ScrollOn();
+            var child = eleRef.Child();
+            UseChild = child is not null;
+            FindFrom = child;    // Will be set properly if descendant, otherwise it will be null
+            // TODO: add ancestor
         }
 
-        public ElementObject(Enum eleRef, int randLength)
+        public ElementObject(Enum eleRef, int randLength) : this(eleRef)
         {
             //TODO Expand constructors
-            EleType = eleRef.Type();
-            EleRef = eleRef.Ref();
-            ElementName = eleRef.ToString();
             Random = true;
             RandomLength = randLength;
         }
 
-        public ElementObject(Enum eleRef, Dictionary<string, string> runtimeUpdate)
+        public ElementObject(Enum scrollParent, ElementType type, string eleRef) : this(type, eleRef)
         {
-            EleType = eleRef.Type();
-            EleRef = eleRef.Ref();
-            ElementName = eleRef.ToString();
+            ScrollableParent = new(scrollParent);
+        }
+
+        public ElementObject(Enum eleRef, Dictionary<string, string> runtimeUpdate) : this(eleRef)
+        {
             RuntimeRefUpdate = runtimeUpdate;
             RuntimeUpdate();
+        }
+
+        public void SetChild(ElementObject child)
+        {
+            UseChild = child is not null;
+            FindFrom = child;    // Will be set properly if descendant, otherwise it will be null
         }
 
         public void RuntimeUpdate()

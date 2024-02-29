@@ -96,6 +96,34 @@ namespace aUI.Automation.Enums
             }
         }
 
+        public static ElementObject Child(this Enum field)
+        {
+            var enumField = field.GetType().GetField(field.ToString());
+            var attributes = (EChild[])enumField.GetCustomAttributes(typeof(EChild), false);
+            if (attributes.Length > 0)
+            {
+                return new ElementObject(attributes[0].Child);
+            }
+            else
+            {
+                return null;
+            }
+        }
+        
+        public static ElementObject ScrollOn(this Enum field)
+        {
+            var enumField = field.GetType().GetField(field.ToString());
+            var attributes = (EScrollOn[])enumField.GetCustomAttributes(typeof(EScrollOn), false);
+            if (attributes.Length > 0)
+            {
+                return new ElementObject(attributes[0].ScrollParent);
+            }
+            else
+            {
+                return null;
+            }
+        }
+
         public static string Api(this Enum field, string defaultRtn = null)
         {
             var fi = field.GetType().GetField(field.ToString());
@@ -157,6 +185,50 @@ namespace aUI.Automation.Enums
             ERef = eRef;
         }
     }
+
+    [AttributeUsage(AttributeTargets.Enum | AttributeTargets.Field)]
+    public class EChild : Attribute
+    {
+        public Enum Child
+        {
+            get;
+        }
+        /// <summary>
+        /// When attached to an element, it means the child element is a child of the parent.
+        /// <example>
+        /// For example:
+        /// <code>
+        /// public enum ShopRef
+        /// {
+        ///     [EType(ElementType.FlutterValueKey)][ERef("filter_dropdown_item_all")][EChild(Text)] FilterAll,
+        ///     [EType(ElementType.FlutterType)][ERef("RichText")] Text,  
+        /// }
+        /// </code>
+        /// means act on descendant Text of FilterAll
+        /// </example>
+        /// </summary>
+        /// <param name="child"></param>
+        public EChild(object child)
+        {
+            // cannot pass Enum at compile time, so unbox it at runtime
+            Child = child as Enum;
+        }
+    }
+    
+    [AttributeUsage(AttributeTargets.Enum | AttributeTargets.Field)]
+    public class EScrollOn : Attribute
+    {
+        public Enum ScrollParent
+        {
+            get;
+        }
+        public EScrollOn(object scrollParent)
+        {
+            ScrollParent = scrollParent as Enum;
+        }
+    }
+
+    
 
     [AttributeUsage(AttributeTargets.Enum | AttributeTargets.Field)]
     public class ApiAttribute : Attribute
