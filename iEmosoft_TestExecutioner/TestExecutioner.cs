@@ -32,6 +32,7 @@ namespace aUI.Automation
         public BaseAuthor TestAuthor = null;
         private bool ReportingEnabled = true;
         private bool TestPassed = true;
+        public string ScrollBehavior = "center";
         public bool VerboseLogging { get; set; }
         public bool UseRelativeTiming { get; set; }
         public DateTime StartTime { get; private set; }
@@ -102,6 +103,7 @@ namespace aUI.Automation
 
             VerboseLogging = useVerboseLogging;
             UseRelativeTiming = useRelativeTiming;
+            ScrollBehavior = Config.GetConfigSetting("DefaultScrollBehavior", "start");
             SetDefaultMaxTime();
             Assert = new AssertHelp(this);
 
@@ -1069,6 +1071,13 @@ namespace aUI.Automation
             return Action.ExecuteAction(obj);
         }
 
+        public ElementResult DragAndDrop(ElementObject objSource, ElementObject objDestination)
+        {
+            objSource.Action = ElementAction.DragAndDrop;
+            objSource.DragToElement = objDestination;
+            return Action.ExecuteAction(objSource);
+        }
+
         public ElementResult GetCheckbox(ElementObject ele)
         {
             ele.Action = ElementAction.GetCheckbox;
@@ -1136,8 +1145,9 @@ namespace aUI.Automation
             return Action.ExecuteAction(obj);
         }
 
-        public ElementResult ScrollTo(Enum ele, string loc = "start", int maxWait = 10)
+        public ElementResult ScrollTo(Enum ele, string loc = "", int maxWait = 10)
         {
+            loc = string.IsNullOrEmpty(loc) ? ScrollBehavior : loc; // Use default scroll behavior if loc isnt set
             var obj = new ElementObject(ele) { Action = ElementAction.Wait, WaitType = Wait.Presence, MaxWait = maxWait };
             var act = Action.ExecuteAction(obj);
             if (act.Success)
@@ -1466,6 +1476,20 @@ namespace aUI.Automation
                 Console.WriteLine("Failed to insert token into local storage");
             }
         }
+
+        public string GetLocalStorage(string tokenName)
+        {
+            try
+            {
+                return (string)RawSeleniumWebDriver_AvoidCallingDirectly.ExecuteScript($"return localStorage.getItem('{tokenName}');");
+            }
+            catch
+            {
+                Console.WriteLine("Failed to get token from local storage");
+                return string.Empty;
+            }
+        }
+
         public void Dispose()
         {
             try

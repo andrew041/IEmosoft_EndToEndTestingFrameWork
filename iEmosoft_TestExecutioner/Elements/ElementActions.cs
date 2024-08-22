@@ -22,6 +22,7 @@ namespace aUI.Automation.Elements
         RadioBtn,
         MultiDropdown,
         Hover,
+        DragAndDrop,
 
         //passive
         GetText,
@@ -30,7 +31,7 @@ namespace aUI.Automation.Elements
         GetCSS,
         GetProperty,
         Wait,
-        GetDropdown,
+        GetDropdown
     }
 
     public enum ElementType
@@ -113,6 +114,7 @@ namespace aUI.Automation.Elements
                     case ElementAction.DropdownIndex:
                     case ElementAction.RadioBtn:
                     case ElementAction.MultiDropdown:
+                    case ElementAction.DragAndDrop:
                     case ElementAction.Hover:
                         TE.BeginTestCaseStep($"Execute action {ele.Action} on element: {eleName}",
                             ele.Random || ele.ProtectedValue ? "Random Value" : ele.Text);
@@ -172,6 +174,7 @@ namespace aUI.Automation.Elements
                     case ElementAction.DropdownIndex:
                     case ElementAction.RadioBtn:
                     case ElementAction.MultiDropdown:
+                    case ElementAction.DragAndDrop:
                     case ElementAction.Hover:
                         TE.BeginTestCaseStep($"Execute action {ele.Action} on elements: {eleName}",
                             ele.Random || ele.ProtectedValue ? "Random Value" : ele.Text);
@@ -479,6 +482,23 @@ namespace aUI.Automation.Elements
                     case ElementAction.GetProperty:
                         rsp.Text = ele.GetProperty(eleObj.Text);
                         break;
+                    case ElementAction.DragAndDrop:
+                        //Creating object of Actions class to build composite actions
+                        var finder = ElementFinder(eleObj);
+                        var fromElement = FindElement(eleObj, finder);
+                        finder = ElementFinder(eleObj.DragToElement);
+                        var toElement = FindElement(eleObj.DragToElement, finder);
+                        Actions builder = new Actions(Driver);
+
+                        //Building a drag and drop action
+                        var dragAndDrop = builder.ClickAndHold(fromElement.RawEle)
+                        .MoveToElement(toElement.RawEle)
+                        .Release(toElement.RawEle)
+                        .Build();
+
+                        //Performing the drag and drop action
+                        dragAndDrop.Perform();
+                        break;
                     case ElementAction.Wait:
                         //check if wait was successful or not
                         var rtn = false;
@@ -546,7 +566,7 @@ namespace aUI.Automation.Elements
             return desired;
         }
 
-        public By ElementFinder(ElementObject ele)
+        private By ElementFinder(ElementObject ele)
         {
             return ele.EleType switch
             {
@@ -952,16 +972,16 @@ namespace aUI.Automation.Elements
         /// </summary>
         /// <param name="elementRef"></param>
         /// <param name="location">'start' 'center' 'end' or 'nearest'</param>
-        public static void ScrollTo(this ElementResult elementRef, string location = "center")
+        public static void ScrollTo(this ElementResult elementRef, string location = "")
         {
             IJavaScriptExecutor js = elementRef.TE.RawSeleniumWebDriver_AvoidCallingDirectly as IJavaScriptExecutor;
             if (string.IsNullOrEmpty(location))
             {
-                js.ExecuteScript($"arguments[0].scrollIntoView(true);", elementRef.RawEle);
+                js.ExecuteScript($"arguments[0].scrollIntoView({{block: \"start\", inline: \"nearest\", behavior: \"instant\"}});", elementRef.RawEle);
                 return;
             }
-
-            js.ExecuteScript($"arguments[0].scrollIntoView({{block: \"{location}\", inline: \"center\"}});", elementRef.RawEle);
+            location = string.IsNullOrEmpty(location) ? Config.GetConfigSetting("DefaultScrollBehavior", "center") : location;
+            js.ExecuteScript($"arguments[0].scrollIntoView({{block: \"{location}\", inline: \"center\", behavior: \"instant\"}});", elementRef.RawEle);
         }
         public static ElementResult Click(this ElementResult elementRef, ElementObject ele = null)
         {

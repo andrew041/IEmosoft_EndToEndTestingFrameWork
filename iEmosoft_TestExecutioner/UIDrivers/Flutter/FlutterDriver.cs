@@ -89,7 +89,7 @@ namespace aUI.Automation.Flutter
                 if (!message.StartsWith("An unknown server-side error occurred while processing the command."))
                 {
                     // This is not the expected error from appium-flutter-driver. Rethrow
-                    throw e;
+                    throw;
                 }
                 return FlutterError.Parse(message);
             }

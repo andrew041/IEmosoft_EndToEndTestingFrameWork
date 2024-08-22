@@ -12,7 +12,7 @@ namespace aUI.Automation.HelperObjects
     public class Api : IDisposable
     {
         //constructor would create the primary object and any needed default headers + auth tokens
-        public HttpClient Client { get; }
+        public HttpClient Client;
         TestExecutioner TE;
         string ApplicationType = "application/json";
         string RootEndpt = "";
@@ -20,7 +20,7 @@ namespace aUI.Automation.HelperObjects
         int RetryWait = 750;
         public HttpResponseMessage RspMsg;
 
-        public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json")
+        public Api(TestExecutioner te, string baseUrl = "", string appType = "application/json", int timeoutSeconds = 60)
         {
             TE = te;
             ApplicationType = appType;
@@ -33,6 +33,7 @@ namespace aUI.Automation.HelperObjects
             Client.BaseAddress = new Uri(baseUrl);
             Client.DefaultRequestHeaders.Accept.Add(
                 new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(appType));
+            Client.Timeout = new TimeSpan(0, 0, timeoutSeconds);//1 min
         }
         
 
@@ -46,6 +47,7 @@ namespace aUI.Automation.HelperObjects
 
             Client = new(handler);
             Client.BaseAddress = new Uri(baseUrl);
+            Client.Timeout = new TimeSpan(0, 0, timeoutSeconds);//1 min
         }
 
         public void SetAuthentication(string authKey, string type = "Bearer")
@@ -157,11 +159,48 @@ namespace aUI.Automation.HelperObjects
             return RspMsg.GetRsp();
         }
 
+        //MultipartFormDataContent
+
+        public dynamic PostCallMultipart(Enum endpt, MultipartFormDataContent body, string query = "", int expectedCode = 200, bool retry = true)
+        {
+            StartStep(endpt, "Post", expectedCode);
+            var uri = $"{RootEndpt}{endpt.Api()}{query}";
+            RspMsg = Client.PostAsync(uri, body).Result;
+            var rspBody = RspMsg.Content.ReadAsStringAsync().Result;
+
+            if (TE is not null)
+            {
+                TE.VerboseLog(new Dictionary<string, string>
+                {
+                    {"Method", "POST" },
+                    {"URI", endpt.Api() + query },
+                    {"Expected Code", ""+expectedCode },
+                    {"Body" , "Multipart Form Data" },
+                    {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response",  RspMsg.Content.ReadAsStringAsync().Result }
+                }, "HTTP Call");
+                TE.CheckTestTimeLimit();
+            }
+
+            if (retry && RetryCode.Contains((int)RspMsg.StatusCode))
+            {
+                TE.Pause(500);
+                return PostCallMultipart(endpt, body, query, expectedCode, false);
+            }
+            if (expectedCode != 0)
+            {
+                AssertResult(expectedCode, RspMsg);
+            }
+
+            return RspMsg.GetRsp();
+        }
+
         //put
         public dynamic PutCall(Enum endpt, object body, string query = "", int expectedCode = 200, bool retry = true)
         {
             StartStep(endpt, "Put", expectedCode);
             var uri = RootEndpt + endpt.Api() + query;
+            
             var data = FormatBody(body);
             RspMsg = Client.PutAsync(uri, data).Result;
 
@@ -239,6 +278,7 @@ namespace aUI.Automation.HelperObjects
                     {"Expected Code", ""+expectedCode },
                     {"Body", FormatBody(body).ToString()},
                     {"Status Code", $"{(int)RspMsg.StatusCode}" },
+                    {"Response", RspMsg.Content.ReadAsStringAsync().Result }
                 }, "HTTP Call");
                 TE.CheckTestTimeLimit();
             }

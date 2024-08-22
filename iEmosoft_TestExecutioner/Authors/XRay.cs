@@ -822,7 +822,9 @@ namespace aUI.Automation.Authors
                     }
                 }
 
-                comment += Environment.NewLine + "*StackTrace:*" + Environment.NewLine + te.TestStackTrace;
+                // Add bitbucket link to each line
+                var stackTraceLines = te.TestStackTrace.Split('\n').Select(line => line.Trim()).Select(line => { var b = GetBitbucketLinkForLine(line); return string.IsNullOrEmpty(b) ? line : $"{line} ([Open in Bitbucket|{b}])"; });
+                comment += Environment.NewLine + "*StackTrace:*" + Environment.NewLine + string.Join('\n', stackTraceLines);
             }
             if (!string.IsNullOrEmpty(te.TestAuthor.TestComments))
             {
@@ -896,6 +898,26 @@ namespace aUI.Automation.Authors
 
             SubmitResults();
         }
+
+        private string bitbucketUrl = Config.GetConfigSetting("RepoURL");
+        private string GetBitbucketLinkForLine(string stacktraceLine)
+        {
+            try
+            {
+                var stackTraceRegex = new Regex(@"^.*\/src(.*):line (.*)$");
+                var match = stackTraceRegex.Match(stacktraceLine);
+                var filepath = match.Groups[1].Value;
+                var filename = filepath.Split('/').Last();
+                var lineNumber = match.Groups[2].Value;
+                var path = $"{bitbucketUrl}{filepath}?fileviewer=file-view-default#{filename}-{lineNumber}";
+                return path;
+            }
+            catch (IndexOutOfRangeException)
+            {
+                return "";
+            }
+        }
+
 
         private void SubmitResults(bool restricted = true)
         {

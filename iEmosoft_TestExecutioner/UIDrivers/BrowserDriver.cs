@@ -18,6 +18,7 @@ namespace aUI.Automation.UIDrivers
         public enum BrowserDriverEnumeration
         {
             Chrome,
+            ChromeHeadless,
             ChromeRemote,
             Firefox,
             FirefoxRemote,
@@ -62,10 +63,20 @@ namespace aUI.Automation.UIDrivers
                     break;
                 case BrowserDriverEnumeration.Chrome:
                     var chromeOps = new ChromeOptions();
+                    chromeOps.AddArgument("force-device-scale-factor=0.75");
+                    chromeOps.AddArgument("high-dpi-support=0.75");
                     Browser = new ChromeDriver("./", chromeOps);
                     DriverType = "Chrome";
                     break;
-
+                case BrowserDriverEnumeration.ChromeHeadless:
+                    var chromeHeadlessOps = new ChromeOptions();
+                    chromeHeadlessOps.AddArgument("headless");
+                    chromeHeadlessOps.AddArgument("--no-sandbox");
+                    var windowResolution = Config.GetConfigSetting("WindowResolution");
+                    chromeHeadlessOps.AddArgument($"window-size={windowResolution.Replace("x",",")}");
+                    Browser = new ChromeDriver("./", chromeHeadlessOps);
+                    DriverType = "Chrome";
+                    break;
                 case BrowserDriverEnumeration.ChromeRemote:
                     var chromeROps = new ChromeOptions();
                     chromeROps.AddArgument("--disable-dev-shm-usage");
