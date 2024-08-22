@@ -1,4 +1,5 @@
 ﻿using aUI.Automation.Enums;
+using aUI.Automation.HelperObjects;
 using OpenQA.Selenium;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,7 @@ namespace aUI.Automation.Elements
         public bool UseChild;
         public ElementObject FindFrom;  // Represents a parent element if using descendant, or child element if using ancestor
         public ElementObject ScrollableParent;
+        public ElementObject DragToElement;
 
         /// <summary>
         /// Option to replace parts of a preset enum with runtime values.
@@ -51,6 +53,7 @@ namespace aUI.Automation.Elements
             ElementName = $"{type} Element Specified";
             Text = desiredText;
             ExpectedValue = desiredText;
+            ScrollLoc = Config.GetConfigSetting("DefaultScrollBehavior", "center");
         }
 
         public ElementObject(Enum eleRef, string desiredText = "")
@@ -59,6 +62,7 @@ namespace aUI.Automation.Elements
             EleType = eleRef.Type();
             EleRef = eleRef.Ref();
             ElementName = eleRef.ToString();
+            ScrollLoc = Config.GetConfigSetting("DefaultScrollBehavior", "center");
             Text = desiredText;
             ExpectedValue = desiredText;
             ScrollableParent = eleRef.ScrollOn();

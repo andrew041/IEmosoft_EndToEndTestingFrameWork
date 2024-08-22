@@ -39,6 +39,7 @@ namespace aUI.Automation.HelperObjects
                 "FIREFOX" => new BrowserDriver(Configuration),
                 "IE" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.IE),
                 "CHROME" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.Chrome),
+                "CHROMEHEADLESS" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.ChromeHeadless),
                 "SAUCELABS" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.SauceLabs),
                 "CHROMEREMOTE" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.ChromeRemote),
                 "FIREFOXREMOTE" => new BrowserDriver(Configuration, BrowserDriver.BrowserDriverEnumeration.FirefoxRemote),
